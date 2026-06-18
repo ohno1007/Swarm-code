@@ -8,7 +8,7 @@ pub mod provider;
 pub mod types;
 
 pub use deepseek::DeepSeekProvider;
-pub use provider::{LlmError, LlmProvider, Result};
+pub use provider::{DeltaSink, LlmError, LlmProvider, Result};
 pub use types::{
     ChatRequest, ChatResponse, Choice, FunctionCall, FunctionSpec, Message, Role, ToolCall,
     ToolSpec, Usage,

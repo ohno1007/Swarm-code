@@ -47,10 +47,19 @@ impl Tool for AnalyzeCode {
             .ok_or_else(|| anyhow::anyhow!("missing required argument: path"))?;
         let format = args["format"].as_str().unwrap_or("outline");
 
-        let path = ctx.workspace.join(rel);
+        // Analyze the overlay version (staged edits included).
+        let source = ctx
+            .coordinator
+            .buffer
+            .read(rel)?
+            .ok_or_else(|| anyhow::anyhow!("file not found: {rel}"))?;
+        let name = std::path::Path::new(rel)
+            .file_name()
+            .and_then(|n| n.to_str())
+            .unwrap_or("source");
         let analyzer = Analyzer::new();
         let root = analyzer
-            .analyze_path(&path)
+            .analyze_source(name, &source)
             .map_err(|e| anyhow::anyhow!("analyze failed: {e}"))?;
 
         match format {

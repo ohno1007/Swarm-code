@@ -1,5 +1,6 @@
 //! Swarm-code CLI entry point.
 
+mod keystore;
 mod repl;
 
 use std::path::PathBuf;
@@ -35,6 +36,21 @@ enum Command {
         #[arg(long)]
         json: bool,
     },
+    /// Manage credentials (DeepSeek API key).
+    Config {
+        #[command(subcommand)]
+        action: ConfigAction,
+    },
+}
+
+#[derive(Subcommand)]
+enum ConfigAction {
+    /// Set and save the DeepSeek API key.
+    SetKey,
+    /// Show the current (masked) configuration.
+    Show,
+    /// Print the config file path.
+    Path,
 }
 
 #[tokio::main]
@@ -49,15 +65,37 @@ async fn main() -> anyhow::Result<()> {
         .init();
 
     let cli = Cli::parse();
-    let workspace = cli
-        .workspace
-        .unwrap_or(std::env::current_dir()?)
-        .canonicalize()?;
 
+    // Config and analyze don't need a key or a workspace handshake.
     match cli.command.unwrap_or(Command::Chat) {
-        Command::Analyze { path, json } => analyze(&path, json),
-        Command::Run { task } => run_once(workspace, task).await,
-        Command::Chat => repl::run(workspace).await,
+        Command::Config { action } => return config(action),
+        Command::Analyze { path, json } => return analyze(&path, json),
+        Command::Run { task } => {
+            keystore::ensure_api_key()?;
+            run_once(resolve_workspace(cli.workspace)?, task).await
+        }
+        Command::Chat => {
+            keystore::ensure_api_key()?;
+            repl::run(resolve_workspace(cli.workspace)?).await
+        }
+    }
+}
+
+fn resolve_workspace(arg: Option<PathBuf>) -> anyhow::Result<PathBuf> {
+    Ok(arg.unwrap_or(std::env::current_dir()?).canonicalize()?)
+}
+
+fn config(action: ConfigAction) -> anyhow::Result<()> {
+    match action {
+        ConfigAction::SetKey => keystore::set_key_interactive(),
+        ConfigAction::Show => {
+            keystore::show();
+            Ok(())
+        }
+        ConfigAction::Path => {
+            println!("{}", keystore::config_path().display());
+            Ok(())
+        }
     }
 }
 

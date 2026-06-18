@@ -6,11 +6,17 @@ use std::sync::Arc;
 use async_trait::async_trait;
 use swarm_llm::ToolSpec;
 
+use crate::coordinator::Coordinator;
+
 /// Context handed to every tool invocation.
 #[derive(Clone)]
 pub struct ToolContext {
     /// Root directory the agent is allowed to operate within.
     pub workspace: PathBuf,
+    /// Identity of the acting agent (used for authoring changes and locks).
+    pub agent: String,
+    /// Shared coordination services (buffer, locks, events, validator).
+    pub coordinator: Arc<Coordinator>,
     /// Hook for spawning sub-agents. `None` inside a sub-agent (depth limit).
     pub spawner: Option<Arc<dyn SubAgentSpawner>>,
     /// Current sub-agent nesting depth (0 = lead agent).
@@ -18,11 +24,18 @@ pub struct ToolContext {
 }
 
 impl ToolContext {
-    pub fn new(workspace: PathBuf) -> Self {
+    pub fn for_agent(
+        agent: impl Into<String>,
+        coordinator: Arc<Coordinator>,
+        spawner: Option<Arc<dyn SubAgentSpawner>>,
+        depth: usize,
+    ) -> Self {
         Self {
-            workspace,
-            spawner: None,
-            depth: 0,
+            workspace: coordinator.workspace.clone(),
+            agent: agent.into(),
+            coordinator,
+            spawner,
+            depth,
         }
     }
 }

@@ -23,6 +23,14 @@ fn resolve(ctx: &ToolContext, rel: &str) -> anyhow::Result<PathBuf> {
     Ok(normalized)
 }
 
+/// Resolve to a workspace-relative path (used as the change-buffer key),
+/// rejecting anything that escapes the workspace.
+pub(crate) fn workspace_rel(ctx: &ToolContext, rel: &str) -> anyhow::Result<PathBuf> {
+    let abs = resolve(ctx, rel)?;
+    let root = normalize(&ctx.workspace);
+    Ok(abs.strip_prefix(&root).unwrap_or(&abs).to_path_buf())
+}
+
 /// Lexical path normalization (no filesystem access, resolves `.`/`..`).
 fn normalize(p: &Path) -> PathBuf {
     let mut out = PathBuf::new();
@@ -60,9 +68,12 @@ impl Tool for ReadFile {
     }
     async fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<String> {
         let path = require_path(&args)?;
-        let resolved = resolve(ctx, path)?;
-        let content = tokio::fs::read_to_string(&resolved).await?;
-        Ok(content)
+        // Read through the change-buffer overlay so agents see staged edits.
+        let rel = workspace_rel(ctx, path)?;
+        match ctx.coordinator.buffer.read(&rel)? {
+            Some(content) => Ok(content),
+            None => anyhow::bail!("file not found (or staged for deletion): {path}"),
+        }
     }
 }
 
@@ -74,7 +85,9 @@ impl Tool for WriteFile {
         "write_file"
     }
     fn description(&self) -> &str {
-        "Create or overwrite a text file in the workspace."
+        "Stage a file create/overwrite into the change buffer. The write is NOT \
+         applied to disk until commit_changes is called. Other agents see it \
+         via the overlay immediately."
     }
     fn parameters(&self) -> Value {
         json!({
@@ -89,12 +102,14 @@ impl Tool for WriteFile {
     async fn execute(&self, args: Value, ctx: &ToolContext) -> anyhow::Result<String> {
         let path = require_path(&args)?;
         let content = args["content"].as_str().unwrap_or("");
-        let resolved = resolve(ctx, path)?;
-        if let Some(parent) = resolved.parent() {
-            tokio::fs::create_dir_all(parent).await?;
-        }
-        tokio::fs::write(&resolved, content).await?;
-        Ok(format!("wrote {} bytes to {path}", content.len()))
+        let rel = workspace_rel(ctx, path)?;
+        ctx.coordinator
+            .buffer
+            .stage_write(&rel, content.to_string(), &ctx.agent);
+        Ok(format!(
+            "staged write of {} bytes to {path} (run commit_changes to apply)",
+            content.len()
+        ))
     }
 }
 

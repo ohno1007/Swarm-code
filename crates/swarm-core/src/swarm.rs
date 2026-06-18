@@ -8,18 +8,21 @@ use swarm_llm::LlmProvider;
 use tracing::info;
 
 use crate::agent::{worker_system_prompt, Agent, ORCHESTRATOR_PROMPT};
+use crate::coordinator::Coordinator;
 use crate::tool::{SubAgentSpawner, ToolContext, ToolRegistry};
 
-/// Holds everything agents need (provider, model, tools, workspace) and acts as
-/// the coordinator that spawns workers.
+/// Holds everything agents need (provider, model, tools, coordinator) and acts
+/// as the factory that spawns workers.
 ///
 /// A single level of delegation is supported: the lead orchestrator may
-/// `spawn_agent`, but workers run with `spawner = None`.
+/// `spawn_agent`, but workers run with `spawner = None`. All agents share one
+/// [`Coordinator`], so their staged changes, locks and events are coordinated.
 pub struct Swarm {
     provider: Arc<dyn LlmProvider>,
     model: String,
     tools: Arc<ToolRegistry>,
     workspace: PathBuf,
+    coordinator: Arc<Coordinator>,
 }
 
 impl Swarm {
@@ -33,12 +36,17 @@ impl Swarm {
             provider,
             model: model.into(),
             tools: Arc::new(tools),
+            coordinator: Coordinator::new(workspace.clone()),
             workspace,
         }
     }
 
     pub fn workspace(&self) -> &PathBuf {
         &self.workspace
+    }
+
+    pub fn coordinator(&self) -> &Arc<Coordinator> {
+        &self.coordinator
     }
 
     pub fn model(&self) -> &str {
@@ -58,11 +66,12 @@ impl Swarm {
 
     /// Tool context for the lead agent, wired so `spawn_agent` can delegate.
     pub fn lead_context(self: &Arc<Self>) -> ToolContext {
-        ToolContext {
-            workspace: self.workspace.clone(),
-            spawner: Some(self.clone()),
-            depth: 0,
-        }
+        ToolContext::for_agent(
+            "orchestrator",
+            self.coordinator.clone(),
+            Some(self.clone()),
+            0,
+        )
     }
 
     /// Run a worker agent to completion on `task`.
@@ -80,11 +89,12 @@ impl Swarm {
         );
         agent.push_user(task);
 
-        let ctx = ToolContext {
-            workspace: self.workspace.clone(),
-            spawner: None,
-            depth: 1,
-        };
+        let ctx = ToolContext::for_agent(
+            format!("worker:{role}"),
+            self.coordinator.clone(),
+            None,
+            1,
+        );
         agent.run(&ctx).await
     }
 }

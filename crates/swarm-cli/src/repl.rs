@@ -23,6 +23,15 @@ pub async fn run(workspace: PathBuf) -> anyhow::Result<()> {
     println!("workspace: {}", workspace.display());
     println!("type /help for commands, /quit to exit\n");
 
+    // Surface coordination events (staged/committed/locked/validated) as they
+    // happen across all agents and sessions.
+    let mut events = manager.swarm().coordinator().events.subscribe();
+    tokio::spawn(async move {
+        while let Ok(ev) = events.recv().await {
+            eprintln!("\x1b[2m· {}\x1b[0m", ev.describe());
+        }
+    });
+
     let mut current = manager.create("main").await;
 
     let stdin = tokio::io::stdin();
@@ -46,8 +55,20 @@ pub async fn run(workspace: PathBuf) -> anyhow::Result<()> {
             continue;
         }
 
-        match manager.send(current, line).await {
-            Ok(answer) => println!("\n{answer}\n"),
+        // Stream the response live.
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<String>();
+        let printer = tokio::spawn(async move {
+            let mut out = tokio::io::stdout();
+            let _ = out.write_all(b"\n").await;
+            while let Some(delta) = rx.recv().await {
+                let _ = out.write_all(delta.as_bytes()).await;
+                let _ = out.flush().await;
+            }
+        });
+        let result = manager.send_streaming(current, line, tx).await;
+        let _ = printer.await;
+        match result {
+            Ok(_) => println!("\n"),
             Err(e) => eprintln!("\nerror: {e}\n"),
         }
         prompt(&mut stdout, current).await?;

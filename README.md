@@ -2,13 +2,27 @@
 
 A multi-agent AI coding CLI, written in Rust. Like Claude Code, but built around
 **multi-agent coordination** and **concurrent multi-session** work, with a
-built-in **tree-sitter code analyzer** so agents can understand a project's
-structure fast instead of reading every file.
+built-in **tree-sitter code analyzer** and a **git-like change-management layer**
+so a swarm of agents can edit one codebase without stepping on each other.
 
 Currently targets the **DeepSeek** API (OpenAI-compatible).
 
-> Status: early skeleton. The architecture and plumbing are in place; expect
-> rough edges and missing features.
+> Status: working skeleton. Core plumbing is in place and tested; expect rough
+> edges and missing features.
+
+## Highlights
+
+- **Change Buffer** — agents never write to disk directly; edits are staged into
+  a shared overlay (like a git index) and applied atomically on commit.
+- **Symbol-level locks** — finer-grained than file locks: two agents can edit
+  two different functions in the same file at once, but not the same one.
+- **Compile validation** — `commit_changes` runs `cargo check` (fast) and
+  reports failures so the swarm self-corrects.
+- **Event bus** — staged/committed/locked/validated events propagate to all
+  agents and to the REPL live.
+- **Agent terminal** — `run_command` gives agents a sandboxed shell.
+- **Streaming** — responses stream token-by-token in the REPL.
+- **In-CLI key setup** — first run prompts for your DeepSeek key and saves it.
 
 ## Architecture
 
@@ -16,10 +30,10 @@ A Cargo workspace of four crates:
 
 | Crate | Responsibility |
 |-------|----------------|
-| `swarm-llm` | LLM provider abstraction + DeepSeek backend (chat + tool calling). |
+| `swarm-llm` | LLM provider abstraction + DeepSeek backend (chat, tool calling, streaming). |
 | `swarm-analyzer` | tree-sitter syntax & scope analysis (Rust, Python, JS, Go). |
-| `swarm-core` | Agents, tools, the `Swarm` coordinator, concurrent sessions. |
-| `swarm-cli` | The `swarm` binary: REPL + `run` / `analyze` subcommands. |
+| `swarm-core` | Agents, tools, the `Swarm`/`Coordinator`, change buffer, locks, validation, events, concurrent sessions. |
+| `swarm-cli` | The `swarm` binary: REPL + `run` / `analyze` / `config` subcommands. |
 
 ```
 swarm-cli ──> swarm-core ──> swarm-llm  (DeepSeek)
@@ -43,32 +57,53 @@ REPL, `/new` and `/switch` move between them.
 so it can build a mental model without reading the whole file. Add a language by
 dropping its grammar crate and a rule table into `swarm-analyzer`.
 
+### Git-like change management
+All agents in a workspace share one `Coordinator`:
+
+```
+write_file / edit_symbol ─▶ Change Buffer ─(commit_changes)─▶ disk ─▶ cargo check
+        │                       (overlay)                                  │
+        └── edit_symbol takes a symbol-level lock                          ▼
+                                                                       Event Bus ─▶ all agents
+```
+
+The agent tools for this workflow: `write_file`, `edit_symbol`, `view_changes`,
+`commit_changes`, `discard_changes`, `list_locks`, `run_command`, `cargo_check`.
+`edit_symbol` locates a symbol via tree-sitter, locks it, and stages a
+replacement; `commit_changes` flushes the buffer, releases locks and validates.
+
 ## Usage
 
 ```bash
-# 1. Configure your key
-cp .env.example .env && $EDITOR .env   # set DEEPSEEK_API_KEY
+# 1. Configure your key (first `chat`/`run` also prompts automatically)
+cargo run -p swarm-cli -- config set-key
+cargo run -p swarm-cli -- config show
 
 # 2. Analyze a file (no API key needed)
 cargo run -p swarm-cli -- analyze src/main.rs
 cargo run -p swarm-cli -- analyze src/main.rs --json
 
 # 3. One-shot task
-cargo run -p swarm-cli -- run "summarize the architecture of this repo"
+cargo run -p swarm-cli -- run "add a Display impl for the Config struct"
 
 # 4. Interactive multi-session REPL
 cargo run -p swarm-cli -- chat
 ```
 
-REPL commands: `/new [title]`, `/sessions`, `/switch <n>`, `/help`, `/quit`.
+Keys are read from `DEEPSEEK_API_KEY`, then `~/.config/swarm-code/config`, then
+an interactive prompt. REPL commands: `/new [title]`, `/sessions`,
+`/switch <n>`, `/help`, `/quit`.
 
 ## Roadmap
 
-- Streaming responses (the `stream` plumbing exists in `swarm-llm`).
-- Shell/exec and search tools.
-- Richer scope queries (symbol-at-position, references).
-- Provider plugins beyond DeepSeek.
+- ~~Streaming responses~~ ✓
+- ~~Shell/exec tool~~ ✓ (`run_command`)
+- ~~Change buffer, symbol locks, compile validation, event bus~~ ✓
+- ~~In-CLI key configuration~~ ✓
+- Author-scoped commits (currently `commit_changes` flushes the whole buffer).
+- Search/grep tool and richer scope queries (symbol-at-position, references).
 - True parallel sub-agent fan-out with result aggregation.
+- Provider plugins beyond DeepSeek.
 
 ## License
 

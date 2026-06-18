@@ -39,6 +39,16 @@ impl Session {
         self.agent.run(&self.ctx).await
     }
 
+    /// Like [`Session::send`] but streams text deltas to `sink`.
+    pub async fn send_streaming(
+        &mut self,
+        input: impl Into<String>,
+        sink: swarm_llm::DeltaSink,
+    ) -> anyhow::Result<String> {
+        self.agent.push_user(input);
+        self.agent.run_with_sink(&self.ctx, Some(sink)).await
+    }
+
     pub fn turns(&self) -> usize {
         self.agent.history().len()
     }
@@ -83,6 +93,21 @@ impl SessionManager {
             .ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
         let mut guard = session.lock().await;
         guard.send(input).await
+    }
+
+    /// Streaming variant of [`SessionManager::send`].
+    pub async fn send_streaming(
+        &self,
+        id: Uuid,
+        input: impl Into<String>,
+        sink: swarm_llm::DeltaSink,
+    ) -> anyhow::Result<String> {
+        let session = self
+            .get(id)
+            .await
+            .ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
+        let mut guard = session.lock().await;
+        guard.send_streaming(input, sink).await
     }
 
     /// List `(id, title, turns)` for all live sessions.
