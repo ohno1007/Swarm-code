@@ -21,8 +21,11 @@ Currently targets the **DeepSeek** API (OpenAI-compatible).
 - **Event bus** — staged/committed/locked/validated events propagate to all
   agents and to the REPL live.
 - **Agent terminal** — `run_command` gives agents a sandboxed shell.
+- **Claude-Code-style TUI** — a full-screen interface (`swarm chat`) with a
+  header bar, scrolling transcript and input box; cross-platform (Windows/macOS/
+  Linux) via ratatui + crossterm. `--plain` falls back to a line REPL.
 - **Streaming + live feedback** — responses stream token-by-token, and every
-  tool/command call is shown as it runs (`⚙ name … ✓ result`).
+  tool/command call is shown inline as it runs (`⚙ name … ✓ result`).
 - **Memory system** — two layers: *working memory* auto-compacts the
   conversation when it grows too large (older turns → an LLM summary), and
   *long-term memory* persists durable project facts to `.swarm/memory.json`

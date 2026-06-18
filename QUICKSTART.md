@@ -1,45 +1,68 @@
-# Swarm-code — Quickstart
+# Swarm-code — Quickstart (Windows)
 
-A multi-agent AI coding CLI (Rust, DeepSeek). This guide gets you from zero to
-driving the swarm, including the self-configurable **skills** and **MCP**.
+A multi-agent AI coding CLI (Rust, DeepSeek) with a full-screen, Claude-Code-style
+interface, plus self-configurable **skills** and **MCP**.
 
-## 1. Build
+## 1. Run it (no install)
 
-```bash
-cargo build --release         # produces ./target/release/swarm
-# optional: put it on your PATH
-install -m755 target/release/swarm ~/.local/bin/swarm
+`swarm.exe` is a **self-contained** Windows x64 binary — no DLLs, no runtime to
+install. Put it anywhere, then open a terminal there.
+
+> **Use Windows Terminal** (or PowerShell in it) for the best experience — it
+> renders the colors, box-drawing and icons the TUI uses. The old `cmd.exe`
+> works but shows some glyphs poorly.
+
+```powershell
+# in the folder containing swarm.exe
+.\swarm.exe --help
 ```
 
-(If you received the prebuilt `swarm` binary, just `chmod +x swarm` and run it.
-It's a Linux x86-64 build; on macOS/Windows build from source as above.)
+To run it from anywhere, drop `swarm.exe` in a folder on your `PATH`
+(e.g. `C:\Users\<you>\bin`, then add that folder to PATH), or just `cd` to it.
 
 ## 2. Configure your DeepSeek key (in the CLI)
 
-```bash
-swarm config set-key          # paste your key; saved to ~/.config/swarm-code/config (0600)
-swarm config show             # verify (masked)
+```powershell
+.\swarm.exe config set-key      # paste your key; saved to %USERPROFILE%\.config\swarm-code\config
+.\swarm.exe config show         # verify (masked)
 ```
 
-The first `swarm chat`/`swarm run` also prompts automatically if no key is set.
-Key is read from `DEEPSEEK_API_KEY` → `~/.config/swarm-code/config` → prompt.
+The first `chat`/`run` also prompts automatically. Key is read from
+`DEEPSEEK_API_KEY` → `%USERPROFILE%\.config\swarm-code\config` → prompt.
 
 ## 3. Use it
 
-```bash
+```powershell
 # Understand a file's structure (no API key needed) — tree-sitter outline
-swarm analyze src/main.rs
-swarm analyze src/main.rs --json
+.\swarm.exe analyze src\main.rs
+.\swarm.exe analyze src\main.rs --json
 
-# One-shot task in the current repo
-swarm run "add a Display impl for the Config struct and run cargo check"
+# One-shot task in the current folder
+.\swarm.exe run "add a Display impl for the Config struct and run cargo check"
 
-# Interactive, multi-session REPL (streamed output + live tool feedback)
-swarm chat
+# Full-screen interactive UI (the main way to use it)
+.\swarm.exe chat
+.\swarm.exe chat --plain        # simple line-based mode, if you prefer
 ```
 
-REPL commands: `/new [title]`, `/sessions`, `/switch <n>`, `/help`, `/quit`.
-Point at another repo with `-w/--workspace <path>`.
+Point at a specific project with `-w <path>` (default: current folder).
+
+### The chat UI
+
+A header bar (model • session • status), a scrolling transcript that streams the
+assistant's reply with **inline tool/command feedback** (`⚙ tool … ✓ result`),
+and an input box at the bottom.
+
+| Key | Action |
+|-----|--------|
+| Enter | send message |
+| ↑ / ↓ , PgUp / PgDn | scroll the transcript |
+| Esc | clear the input line |
+| Ctrl+C | quit |
+
+Slash commands (type in the input box): `/new [title]`, `/sessions`,
+`/switch <n>`, `/help`, `/quit`. Sessions run concurrently, so you can start a
+task, `/new` another, and switch between them.
 
 ## 4. How the agent works (what you'll see)
 
@@ -88,21 +111,30 @@ saves the config to `.swarm/mcp.json`. Then it uses `mcp_list_tools` and
 }
 ```
 
-## 6. Where state lives
+## 6. Where state lives (Windows)
 
 | Path | What |
 |------|------|
-| `~/.config/swarm-code/config` | API key & model |
-| `<repo>/.swarm/memory.json` | long-term memory (`remember`/`recall`) |
-| `<repo>/.swarm/skills/*.md` | skills |
-| `<repo>/.swarm/mcp.json` | MCP server configs |
+| `%USERPROFILE%\.config\swarm-code\config` | API key & model |
+| `<project>\.swarm\memory.json` | long-term memory (`remember`/`recall`) |
+| `<project>\.swarm\skills\*.md` | skills |
+| `<project>\.swarm\mcp.json` | MCP server configs |
+| `%TEMP%\swarm-code.log` | logs (TUI mode logs here, not the screen) |
 
 `.swarm/` is gitignored by default.
 
-## 7. Env knobs
+## Build from source (optional)
 
-```bash
-DEEPSEEK_MODEL=deepseek-reasoner   # or deepseek-chat (default)
-DEEPSEEK_BASE_URL=https://api.deepseek.com
-RUST_LOG=swarm_core=debug          # verbose logging
+```powershell
+# needs the Rust toolchain (https://rustup.rs)
+cargo build --release          # target\release\swarm.exe
+```
+
+## 7. Env knobs (PowerShell)
+
+```powershell
+$env:DEEPSEEK_MODEL = "deepseek-reasoner"   # or deepseek-chat (default)
+$env:DEEPSEEK_BASE_URL = "https://api.deepseek.com"
+$env:RUST_LOG = "swarm_core=debug"          # verbose logging (-> %TEMP%\swarm-code.log)
+.\swarm.exe chat
 ```
