@@ -5,6 +5,7 @@ pub mod coord;
 pub mod exec;
 pub mod fs;
 pub mod memory;
+pub mod search;
 pub mod spawn;
 
 use std::sync::Arc;
@@ -18,8 +19,10 @@ pub fn default_registry() -> ToolRegistry {
         .with(Arc::new(fs::ReadFile))
         .with(Arc::new(fs::WriteFile))
         .with(Arc::new(fs::ListDir))
-        // Code understanding.
+        // Code understanding & search.
         .with(Arc::new(analyze::AnalyzeCode))
+        .with(Arc::new(search::Search))
+        .with(Arc::new(search::FindFiles))
         // Git-like coordination.
         .with(Arc::new(coord::EditSymbol))
         .with(Arc::new(coord::ViewChanges))
@@ -35,4 +38,5 @@ pub fn default_registry() -> ToolRegistry {
         .with(Arc::new(memory::Forget))
         // Multi-agent delegation.
         .with(Arc::new(spawn::SpawnAgent))
+        .with(Arc::new(spawn::SpawnAgents))
 }

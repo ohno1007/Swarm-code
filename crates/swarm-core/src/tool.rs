@@ -46,6 +46,17 @@ pub trait SubAgentSpawner: Send + Sync {
     /// Run a worker agent with `role` to completion on `task`, returning its
     /// final answer.
     async fn spawn(&self, role: &str, task: &str) -> anyhow::Result<String>;
+
+    /// Run several workers concurrently and collect their results in order.
+    /// The default runs them sequentially; implementors should override for
+    /// real parallelism.
+    async fn spawn_many(&self, tasks: Vec<(String, String)>) -> Vec<anyhow::Result<String>> {
+        let mut out = Vec::with_capacity(tasks.len());
+        for (role, task) in tasks {
+            out.push(self.spawn(&role, &task).await);
+        }
+        out
+    }
 }
 
 /// A capability the model can call.

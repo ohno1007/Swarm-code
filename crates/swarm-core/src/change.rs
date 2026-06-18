@@ -1,10 +1,15 @@
 //! Change Buffer: a git-staging-area-like overlay over the workspace.
 //!
-//! Agents never write to disk directly. They stage writes/deletes here; reads
-//! see the staged overlay on top of disk. A `commit` flushes everything to disk
-//! atomically(ish) and clears the buffer; a `discard` throws staged work away.
-//! This gives the coordinator a single place to review, validate and apply the
-//! swarm's edits.
+//! Agents never write to disk directly. They stage writes/deletes/symbol-edits
+//! here; reads see the staged overlay on top of disk. Commit/discard are
+//! author-scoped.
+//!
+//! Granularity is **symbol-level**: a file edited via [`ChangeBuffer::stage_symbol_edit`]
+//! keeps each agent's symbol edits separate, so two agents can edit two
+//! functions in one file and commit them independently. Symbol edits re-locate
+//! their target via tree-sitter at apply time, so they survive line shifts
+//! caused by other commits. Whole-file writes (new files, non-symbol edits) are
+//! still supported and committed as a unit.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
@@ -18,30 +23,67 @@ enum Staged {
     Delete,
 }
 
-struct Entry {
-    staged: Staged,
-    /// Every agent that contributed to this file's staged content. A file is
-    /// the commit unit, so committing/discarding by any contributor applies to
-    /// the whole entry.
-    contributors: Vec<String>,
+/// One agent's replacement of a named symbol's full source.
+#[derive(Clone, Debug)]
+struct SymbolEdit {
+    symbol: String,
+    new_source: String,
+    author: String,
 }
 
-impl Entry {
-    fn add_contributor(&mut self, author: &str) {
-        if !self.contributors.iter().any(|a| a == author) {
-            self.contributors.push(author.to_string());
+/// What is staged for a single file.
+enum FileEntry {
+    /// A whole-file write or delete (commit unit = the file).
+    Whole {
+        staged: Staged,
+        contributors: Vec<String>,
+    },
+    /// A set of independent symbol edits over the on-disk file.
+    Symbolic { edits: Vec<SymbolEdit> },
+}
+
+impl FileEntry {
+    fn has(&self, author: &str) -> bool {
+        match self {
+            FileEntry::Whole { contributors, .. } => contributors.iter().any(|a| a == author),
+            FileEntry::Symbolic { edits } => edits.iter().any(|e| e.author == author),
         }
     }
 
-    fn has(&self, author: &str) -> bool {
-        self.contributors.iter().any(|a| a == author)
+    fn authors(&self) -> Vec<String> {
+        match self {
+            FileEntry::Whole { contributors, .. } => contributors.clone(),
+            FileEntry::Symbolic { edits } => {
+                let mut a: Vec<String> = Vec::new();
+                for e in edits {
+                    if !a.contains(&e.author) {
+                        a.push(e.author.clone());
+                    }
+                }
+                a
+            }
+        }
+    }
+
+    fn kind(&self) -> &'static str {
+        match self {
+            FileEntry::Whole {
+                staged: Staged::Write(_),
+                ..
+            } => "write",
+            FileEntry::Whole {
+                staged: Staged::Delete,
+                ..
+            } => "delete",
+            FileEntry::Symbolic { .. } => "edit",
+        }
     }
 }
 
 /// Shared staging area for the workspace.
 pub struct ChangeBuffer {
     workspace: PathBuf,
-    entries: Mutex<HashMap<PathBuf, Entry>>,
+    entries: Mutex<HashMap<PathBuf, FileEntry>>,
     events: EventBus,
 }
 
@@ -66,42 +108,120 @@ impl ChangeBuffer {
         self.workspace.join(rel)
     }
 
-    /// Stage a write (create/overwrite).
+    fn base_content(&self, rel: &Path) -> String {
+        std::fs::read_to_string(self.abs(rel)).unwrap_or_default()
+    }
+
+    // ---- staging --------------------------------------------------------
+
+    /// Stage a whole-file write (create/overwrite).
     pub fn stage_write(&self, rel: impl AsRef<Path>, content: String, author: &str) {
-        self.stage(rel.as_ref().to_path_buf(), Staged::Write(content), author);
+        self.stage_whole(rel.as_ref().to_path_buf(), Staged::Write(content), author);
     }
 
-    /// Stage a deletion.
+    /// Stage a whole-file deletion.
     pub fn stage_delete(&self, rel: impl AsRef<Path>, author: &str) {
-        self.stage(rel.as_ref().to_path_buf(), Staged::Delete, author);
+        self.stage_whole(rel.as_ref().to_path_buf(), Staged::Delete, author);
     }
 
-    fn stage(&self, rel: PathBuf, staged: Staged, author: &str) {
+    fn stage_whole(&self, rel: PathBuf, staged: Staged, author: &str) {
         {
             let mut entries = self.entries.lock().unwrap();
-            let entry = entries.entry(rel.clone()).or_insert_with(|| Entry {
-                staged: staged.clone(),
-                contributors: Vec::new(),
-            });
-            entry.staged = staged;
-            entry.add_contributor(author);
+            match entries.get_mut(&rel) {
+                Some(FileEntry::Whole {
+                    staged: s,
+                    contributors,
+                }) => {
+                    *s = staged;
+                    if !contributors.iter().any(|a| a == author) {
+                        contributors.push(author.to_string());
+                    }
+                }
+                _ => {
+                    entries.insert(
+                        rel.clone(),
+                        FileEntry::Whole {
+                            staged,
+                            contributors: vec![author.to_string()],
+                        },
+                    );
+                }
+            }
         }
+        self.publish_staged(rel, author);
+    }
+
+    /// Stage a symbol-level edit: replace `symbol`'s full source with
+    /// `new_source`. Kept separate per agent for independent commits.
+    pub fn stage_symbol_edit(
+        &self,
+        rel: impl AsRef<Path>,
+        symbol: &str,
+        new_source: String,
+        author: &str,
+    ) {
+        let rel = rel.as_ref().to_path_buf();
+        {
+            let mut entries = self.entries.lock().unwrap();
+            match entries.get_mut(&rel) {
+                // A whole-file write is already staged: fold the symbol edit
+                // into that content (degrades to whole-file granularity).
+                Some(FileEntry::Whole {
+                    staged: Staged::Write(content),
+                    contributors,
+                }) => {
+                    let fname = file_name(&rel);
+                    if let Some(updated) =
+                        swarm_analyzer::replace_symbol(&fname, content, symbol, &new_source)
+                    {
+                        *content = updated;
+                    }
+                    if !contributors.iter().any(|a| a == author) {
+                        contributors.push(author.to_string());
+                    }
+                }
+                Some(FileEntry::Symbolic { edits }) => {
+                    edits.retain(|e| !(e.symbol == symbol && e.author == author));
+                    edits.push(SymbolEdit {
+                        symbol: symbol.to_string(),
+                        new_source,
+                        author: author.to_string(),
+                    });
+                }
+                _ => {
+                    entries.insert(
+                        rel.clone(),
+                        FileEntry::Symbolic {
+                            edits: vec![SymbolEdit {
+                                symbol: symbol.to_string(),
+                                new_source,
+                                author: author.to_string(),
+                            }],
+                        },
+                    );
+                }
+            }
+        }
+        self.publish_staged(rel, author);
+    }
+
+    fn publish_staged(&self, path: PathBuf, author: &str) {
         self.events.publish(Event::Staged {
-            path: rel,
+            path,
             author: author.to_string(),
         });
     }
 
-    /// Read a file through the overlay: staged content wins; otherwise disk.
-    /// Returns `Ok(None)` if the file is (staged) deleted or absent.
+    // ---- reading --------------------------------------------------------
+
+    /// Read a file through the overlay. `Ok(None)` if (staged) deleted/absent.
     pub fn read(&self, rel: impl AsRef<Path>) -> std::io::Result<Option<String>> {
         let rel = rel.as_ref();
-        if let Some(entry) = self.entries.lock().unwrap().get(rel) {
-            return Ok(match &entry.staged {
-                Staged::Write(c) => Some(c.clone()),
-                Staged::Delete => None,
-            });
+        let entries = self.entries.lock().unwrap();
+        if let Some(entry) = entries.get(rel) {
+            return Ok(self.materialize(rel, entry));
         }
+        drop(entries);
         match std::fs::read_to_string(self.abs(rel)) {
             Ok(c) => Ok(Some(c)),
             Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
@@ -109,18 +229,33 @@ impl ChangeBuffer {
         }
     }
 
-    /// List pending changes.
+    /// Compute a file's overlay content (disk + staged edits). `None` if deleted.
+    fn materialize(&self, rel: &Path, entry: &FileEntry) -> Option<String> {
+        match entry {
+            FileEntry::Whole {
+                staged: Staged::Write(c),
+                ..
+            } => Some(c.clone()),
+            FileEntry::Whole {
+                staged: Staged::Delete,
+                ..
+            } => None,
+            FileEntry::Symbolic { edits } => {
+                Some(apply_edits(&self.base_content(rel), &file_name(rel), edits))
+            }
+        }
+    }
+
+    // ---- inspection -----------------------------------------------------
+
     pub fn pending(&self) -> Vec<PendingChange> {
         let entries = self.entries.lock().unwrap();
         let mut out: Vec<_> = entries
             .iter()
             .map(|(path, e)| PendingChange {
                 path: path.clone(),
-                authors: e.contributors.clone(),
-                kind: match e.staged {
-                    Staged::Write(_) => "write",
-                    Staged::Delete => "delete",
-                },
+                authors: e.authors(),
+                kind: e.kind(),
             })
             .collect();
         out.sort_by(|a, b| a.path.cmp(&b.path));
@@ -143,13 +278,9 @@ impl ChangeBuffer {
         paths.sort();
 
         let mut out = String::new();
-        for path in paths {
-            let entry = &entries[&path];
-            let old = std::fs::read_to_string(self.abs(&path)).unwrap_or_default();
-            let new = match &entry.staged {
-                Staged::Write(c) => c.clone(),
-                Staged::Delete => String::new(),
-            };
+        for path in &paths {
+            let old = self.base_content(path);
+            let new = self.materialize(path, &entries[path]).unwrap_or_default();
             out.push_str(&format!("--- a/{}\n+++ b/{}\n", path.display(), path.display()));
             let diff = similar::TextDiff::from_lines(&old, &new);
             for change in diff.iter_all_changes() {
@@ -172,38 +303,62 @@ impl ChangeBuffer {
         out
     }
 
-    /// Apply `author`'s staged changes to disk, leaving other authors' staged
-    /// work untouched. Returns the list of affected paths.
+    // ---- commit / discard ----------------------------------------------
+
+    /// Apply `author`'s staged changes to disk, leaving others' work staged.
+    /// Returns the affected paths.
     pub fn commit(&self, author: &str) -> std::io::Result<Vec<PathBuf>> {
-        let drained: Vec<(PathBuf, Staged)> = {
-            let mut entries = self.entries.lock().unwrap();
-            let keys: Vec<PathBuf> = entries
-                .iter()
-                .filter(|(_, e)| e.has(author))
-                .map(|(p, _)| p.clone())
-                .collect();
-            keys.into_iter()
-                .map(|k| {
-                    let e = entries.remove(&k).unwrap();
-                    (k, e.staged)
-                })
-                .collect()
-        };
         let mut applied = Vec::new();
-        for (rel, staged) in drained {
-            let abs = self.abs(&rel);
-            match staged {
-                Staged::Write(content) => {
-                    if let Some(parent) = abs.parent() {
-                        std::fs::create_dir_all(parent)?;
+        {
+            let mut entries = self.entries.lock().unwrap();
+            let paths: Vec<PathBuf> = entries.keys().cloned().collect();
+            for rel in paths {
+                let abs = self.abs(&rel);
+                let entry = entries.get_mut(&rel).unwrap();
+                match entry {
+                    FileEntry::Whole {
+                        staged,
+                        contributors,
+                    } => {
+                        if !contributors.iter().any(|a| a == author) {
+                            continue;
+                        }
+                        let staged = staged.clone();
+                        apply_whole(&abs, &staged)?;
+                        entries.remove(&rel);
+                        applied.push(rel);
                     }
-                    std::fs::write(&abs, content)?;
-                }
-                Staged::Delete => {
-                    let _ = std::fs::remove_file(&abs);
+                    FileEntry::Symbolic { edits } => {
+                        let mine: Vec<SymbolEdit> =
+                            edits.iter().filter(|e| e.author == author).cloned().collect();
+                        if mine.is_empty() {
+                            continue;
+                        }
+                        edits.retain(|e| e.author != author);
+                        let empty = edits.is_empty();
+
+                        // Apply only this author's symbol edits to current disk.
+                        let mut content = std::fs::read_to_string(&abs).unwrap_or_default();
+                        let fname = file_name(&rel);
+                        for e in &mine {
+                            if let Some(u) =
+                                swarm_analyzer::replace_symbol(&fname, &content, &e.symbol, &e.new_source)
+                            {
+                                content = u;
+                            }
+                        }
+                        if let Some(parent) = abs.parent() {
+                            std::fs::create_dir_all(parent)?;
+                        }
+                        std::fs::write(&abs, &content)?;
+
+                        if empty {
+                            entries.remove(&rel);
+                        }
+                        applied.push(rel);
+                    }
                 }
             }
-            applied.push(rel);
         }
         applied.sort();
         self.events.publish(Event::Committed {
@@ -217,17 +372,56 @@ impl ChangeBuffer {
     pub fn discard(&self, author: &str) {
         {
             let mut entries = self.entries.lock().unwrap();
-            let keys: Vec<PathBuf> = entries
-                .iter()
-                .filter(|(_, e)| e.has(author))
-                .map(|(p, _)| p.clone())
-                .collect();
-            for k in keys {
-                entries.remove(&k);
+            let paths: Vec<PathBuf> = entries.keys().cloned().collect();
+            for rel in paths {
+                let remove = match entries.get_mut(&rel).unwrap() {
+                    FileEntry::Whole { contributors, .. } => contributors.iter().any(|a| a == author),
+                    FileEntry::Symbolic { edits } => {
+                        edits.retain(|e| e.author != author);
+                        edits.is_empty()
+                    }
+                };
+                if remove {
+                    entries.remove(&rel);
+                }
             }
         }
         self.events.publish(Event::Discarded {
             author: author.to_string(),
         });
     }
+}
+
+/// Apply a sequence of symbol edits to `base`, re-locating each symbol against
+/// the running content (robust to line shifts).
+fn apply_edits(base: &str, file_name: &str, edits: &[SymbolEdit]) -> String {
+    let mut content = base.to_string();
+    for e in edits {
+        if let Some(u) = swarm_analyzer::replace_symbol(file_name, &content, &e.symbol, &e.new_source) {
+            content = u;
+        }
+    }
+    content
+}
+
+fn apply_whole(abs: &Path, staged: &Staged) -> std::io::Result<()> {
+    match staged {
+        Staged::Write(content) => {
+            if let Some(parent) = abs.parent() {
+                std::fs::create_dir_all(parent)?;
+            }
+            std::fs::write(abs, content)?;
+        }
+        Staged::Delete => {
+            let _ = std::fs::remove_file(abs);
+        }
+    }
+    Ok(())
+}
+
+fn file_name(rel: &Path) -> String {
+    rel.file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("source")
+        .to_string()
 }

@@ -111,4 +111,14 @@ impl SubAgentSpawner for Swarm {
     async fn spawn(&self, role: &str, task: &str) -> anyhow::Result<String> {
         self.run_subagent(role, task).await
     }
+
+    /// Fan out: run all workers concurrently (their LLM calls and tool I/O
+    /// overlap). They share the change buffer and locks, so symbol-level locks
+    /// keep concurrent edits safe.
+    async fn spawn_many(&self, tasks: Vec<(String, String)>) -> Vec<anyhow::Result<String>> {
+        let futures = tasks
+            .iter()
+            .map(|(role, task)| self.run_subagent(role, task));
+        futures::future::join_all(futures).await
+    }
 }

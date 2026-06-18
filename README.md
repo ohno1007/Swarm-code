@@ -46,9 +46,11 @@ swarm-cli ──> swarm-core ──> swarm-llm  (DeepSeek)
 ```
 
 ### Multi-agent coordination
-The lead **orchestrator** agent runs a tool-calling loop. One of its tools is
-`spawn_agent`, which delegates a self-contained subtask to a **worker** agent
-that runs in its own context window and returns a result. Delegation is one
+The lead **orchestrator** agent runs a tool-calling loop. `spawn_agent`
+delegates one self-contained subtask to a **worker** agent in its own context;
+`spawn_agents` fans out **several workers that run concurrently** (their LLM
+calls and tool I/O overlap) and collects all results. Workers share the change
+buffer and symbol locks, so concurrent edits stay coordinated. Delegation is one
 level deep by design (workers can't spawn), keeping things bounded.
 
 ### Concurrent sessions
@@ -75,8 +77,14 @@ write_file / edit_symbol ─▶ Change Buffer ─(commit_changes)─▶ disk ─
 The agent tools for this workflow: `write_file`, `edit_symbol`, `view_changes`,
 `commit_changes`, `discard_changes`, `list_locks`, `run_command`, `cargo_check`.
 `edit_symbol` locates a symbol via tree-sitter, locks it, and stages a
-replacement; `commit_changes` flushes **your** staged files (commits are
-author-scoped), releases your locks and validates.
+replacement; `commit_changes` flushes **your** staged work (author-scoped),
+releases your locks and validates.
+
+Staging is **symbol-level**: each agent's `edit_symbol` is kept as a separate
+edit keyed by symbol, so two agents can edit two functions in one file and
+commit them independently. Edits re-locate their target symbol via tree-sitter
+at apply time, so they survive line shifts from other commits. (Whole-file
+`write_file` still commits as a unit.)
 
 ### Memory
 - **Working memory** (`WorkingMemory`): per-agent conversation buffer. Past a
@@ -118,8 +126,10 @@ an interactive prompt. REPL commands: `/new [title]`, `/sessions`,
 - ~~Context compaction + tool/command feedback~~ ✓
 - ~~Author-scoped commits~~ ✓
 - ~~Memory system (working + long-term)~~ ✓
-- Search/grep tool and richer scope queries (symbol-at-position, references).
-- True parallel sub-agent fan-out with result aggregation.
+- ~~Symbol-level change buffer~~ ✓
+- ~~Search/grep + find-files tools~~ ✓
+- ~~Parallel sub-agent fan-out~~ ✓ (`spawn_agents`)
+- Richer scope queries (symbol-at-position, references).
 - Provider plugins beyond DeepSeek.
 
 ## License

@@ -2,24 +2,10 @@
 
 use async_trait::async_trait;
 use serde_json::{json, Value};
-use swarm_analyzer::{Analyzer, Symbol};
 
 use crate::lock::LockResult;
 use crate::tool::{Tool, ToolContext};
 use crate::tools::fs::workspace_rel;
-
-/// Find the first symbol matching `name` (depth-first) and return its line span.
-fn find_symbol<'a>(node: &'a Symbol, name: &str) -> Option<&'a Symbol> {
-    if node.name == name {
-        return Some(node);
-    }
-    for child in &node.children {
-        if let Some(found) = find_symbol(child, name) {
-            return Some(found);
-        }
-    }
-    None
-}
 
 /// Edit a single symbol's source range, guarded by a symbol-level lock.
 ///
@@ -65,16 +51,12 @@ impl Tool for EditSymbol {
             .read(&rel)?
             .ok_or_else(|| anyhow::anyhow!("file not found: {path}"))?;
 
-        // Locate the symbol's line span.
+        // Validate the symbol exists and report its current span.
         let name = rel.file_name().and_then(|n| n.to_str()).unwrap_or("source");
-        let root = Analyzer::new()
-            .analyze_source(name, &content)
-            .map_err(|e| anyhow::anyhow!("analyze failed: {e}"))?;
-        let target = find_symbol(&root, symbol)
+        let (start, end) = swarm_analyzer::symbol_span(name, &content, symbol)
             .ok_or_else(|| anyhow::anyhow!("symbol '{symbol}' not found in {path}"))?;
-        let (start, end) = (target.start_line, target.end_line);
 
-        // Acquire the symbol lock.
+        // Acquire the symbol-level lock before staging.
         match ctx.coordinator.locks.try_acquire(&rel, symbol, &ctx.agent) {
             LockResult::Acquired => {}
             LockResult::Held { owner } => {
@@ -82,23 +64,12 @@ impl Tool for EditSymbol {
             }
         }
 
-        // Splice [start..=end] (1-based, inclusive) with the new source.
-        let lines: Vec<&str> = content.lines().collect();
-        let mut out = String::new();
-        for line in &lines[..start.saturating_sub(1)] {
-            out.push_str(line);
-            out.push('\n');
-        }
-        out.push_str(new_source.trim_end_matches('\n'));
-        out.push('\n');
-        for line in &lines[end.min(lines.len())..] {
-            out.push_str(line);
-            out.push('\n');
-        }
-
-        ctx.coordinator.buffer.stage_write(&rel, out, &ctx.agent);
+        // Stage as an independent symbol edit (committed separately per author).
+        ctx.coordinator
+            .buffer
+            .stage_symbol_edit(&rel, symbol, new_source.to_string(), &ctx.agent);
         Ok(format!(
-            "staged edit of symbol '{symbol}' ({path}:{start}-{end}); lock held by {}",
+            "staged symbol edit '{symbol}' ({path}:{start}-{end}); lock held by {}",
             ctx.agent
         ))
     }

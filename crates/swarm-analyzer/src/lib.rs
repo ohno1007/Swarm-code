@@ -69,6 +69,48 @@ impl Default for Analyzer {
     }
 }
 
+/// Find the first symbol matching `name` (depth-first).
+pub fn find_symbol<'a>(root: &'a Symbol, name: &str) -> Option<&'a Symbol> {
+    if root.name == name {
+        return Some(root);
+    }
+    root.children.iter().find_map(|c| find_symbol(c, name))
+}
+
+/// Locate a symbol's 1-based inclusive line span `(start, end)` in `source`.
+pub fn symbol_span(file_name: &str, source: &str, symbol: &str) -> Option<(usize, usize)> {
+    let root = Analyzer::new().analyze_source(file_name, source).ok()?;
+    let s = find_symbol(&root, symbol)?;
+    Some((s.start_line, s.end_line))
+}
+
+/// Replace the full source span of `symbol` in `source` with `new_source`.
+///
+/// Returns `None` if the symbol can't be located (or the language is
+/// unsupported). The symbol is re-located against the *current* `source`, so
+/// this is robust to line shifts introduced by other edits.
+pub fn replace_symbol(
+    file_name: &str,
+    source: &str,
+    symbol: &str,
+    new_source: &str,
+) -> Option<String> {
+    let (start, end) = symbol_span(file_name, source, symbol)?;
+    let lines: Vec<&str> = source.lines().collect();
+    let mut out = String::new();
+    for line in &lines[..start.saturating_sub(1)] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    out.push_str(new_source.trim_end_matches('\n'));
+    out.push('\n');
+    for line in &lines[end.min(lines.len())..] {
+        out.push_str(line);
+        out.push('\n');
+    }
+    Some(out)
+}
+
 /// Render a symbol tree as an indented outline (handy for prompts and the CLI).
 pub fn render_outline(root: &Symbol) -> String {
     let mut out = String::new();
