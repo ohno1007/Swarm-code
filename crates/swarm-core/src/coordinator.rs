@@ -11,7 +11,9 @@ use std::sync::Arc;
 use crate::change::ChangeBuffer;
 use crate::events::{Event, EventBus};
 use crate::lock::LockManager;
+use crate::mcp::McpManager;
 use crate::memory::MemoryStore;
+use crate::skills::SkillStore;
 use crate::validate::{self, ValidationResult};
 
 pub struct Coordinator {
@@ -21,6 +23,10 @@ pub struct Coordinator {
     pub locks: Arc<LockManager>,
     /// Durable, workspace-scoped long-term memory.
     pub memory: Arc<MemoryStore>,
+    /// Agent/user-authored skills.
+    pub skills: Arc<SkillStore>,
+    /// External MCP servers and their tools.
+    pub mcp: Arc<McpManager>,
 }
 
 impl Coordinator {
@@ -29,12 +35,16 @@ impl Coordinator {
         let buffer = Arc::new(ChangeBuffer::new(workspace.clone(), events.clone()));
         let locks = Arc::new(LockManager::new(events.clone()));
         let memory = Arc::new(MemoryStore::load(&workspace));
+        let skills = Arc::new(SkillStore::new(&workspace));
+        let mcp = Arc::new(McpManager::new(&workspace));
         Arc::new(Self {
             workspace,
             events,
             buffer,
             locks,
             memory,
+            skills,
+            mcp,
         })
     }
 

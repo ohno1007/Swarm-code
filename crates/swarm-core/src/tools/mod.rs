@@ -4,8 +4,10 @@ pub mod analyze;
 pub mod coord;
 pub mod exec;
 pub mod fs;
+pub mod mcp;
 pub mod memory;
 pub mod search;
+pub mod skills;
 pub mod spawn;
 
 use std::sync::Arc;
@@ -36,6 +38,15 @@ pub fn default_registry() -> ToolRegistry {
         .with(Arc::new(memory::Remember))
         .with(Arc::new(memory::Recall))
         .with(Arc::new(memory::Forget))
+        // Self-configuration: skills.
+        .with(Arc::new(skills::ListSkills))
+        .with(Arc::new(skills::UseSkill))
+        .with(Arc::new(skills::CreateSkill))
+        // Self-configuration: MCP servers.
+        .with(Arc::new(mcp::McpAddServer))
+        .with(Arc::new(mcp::McpListServers))
+        .with(Arc::new(mcp::McpListTools))
+        .with(Arc::new(mcp::McpCall))
         // Multi-agent delegation.
         .with(Arc::new(spawn::SpawnAgent))
         .with(Arc::new(spawn::SpawnAgents))

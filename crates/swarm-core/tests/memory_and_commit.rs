@@ -4,6 +4,7 @@ use std::path::PathBuf;
 
 use swarm_core::coordinator::Coordinator;
 use swarm_core::memory::MemoryStore;
+use swarm_core::skills::SkillStore;
 
 fn temp_workspace(tag: &str) -> PathBuf {
     use std::time::{SystemTime, UNIX_EPOCH};
@@ -58,6 +59,30 @@ fn memory_store_persists_and_recalls() {
     // A fresh load sees the persisted entries.
     let reloaded = MemoryStore::load(&ws);
     assert_eq!(reloaded.recall(None, 10).len(), 2);
+
+    std::fs::remove_dir_all(&ws).ok();
+}
+
+#[test]
+fn skills_can_be_created_and_used_at_runtime() {
+    let ws = temp_workspace("skills");
+    let store = SkillStore::new(&ws);
+    assert!(store.is_empty());
+
+    store
+        .create("Make Release", "How to cut a release", "1. bump version\n2. tag")
+        .unwrap();
+
+    let list = store.list();
+    assert_eq!(list.len(), 1);
+    assert_eq!(list[0].name, "make-release");
+    assert_eq!(list[0].description, "How to cut a release");
+
+    let skill = store.get("make-release").expect("skill");
+    assert!(skill.instructions.contains("bump version"), "{}", skill.instructions);
+
+    // A fresh store sees it (persisted as a file).
+    assert!(!SkillStore::new(&ws).is_empty());
 
     std::fs::remove_dir_all(&ws).ok();
 }

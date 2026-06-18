@@ -27,6 +27,9 @@ Currently targets the **DeepSeek** API (OpenAI-compatible).
   conversation when it grows too large (older turns → an LLM summary), and
   *long-term memory* persists durable project facts to `.swarm/memory.json`
   (`remember`/`recall`/`forget`), injected into each new session's prompt.
+- **Self-configuration** — the agent can extend itself at runtime: author
+  **skills** (reusable instruction packs in `.swarm/skills`) and connect **MCP
+  servers** (`mcp_add_server`) to gain new tools, no restart required.
 - **In-CLI key setup** — first run prompts for your DeepSeek key and saves it.
 
 ## Architecture
@@ -86,6 +89,16 @@ commit them independently. Edits re-locate their target symbol via tree-sitter
 at apply time, so they survive line shifts from other commits. (Whole-file
 `write_file` still commits as a unit.)
 
+### Self-configuration (skills & MCP)
+The agent can grow its own capabilities at runtime:
+- **Skills** (`SkillStore`): named instruction packs stored as markdown in
+  `.swarm/skills`. `create_skill` writes one, `list_skills`/`use_skill` load
+  them. Available skills are listed in the lead agent's prompt each session.
+- **MCP** (`McpManager`): connect external Model Context Protocol servers over
+  stdio. `mcp_add_server` launches a server, discovers its tools and saves the
+  config to `.swarm/mcp.json`; `mcp_list_tools` / `mcp_call` use them. Servers
+  reconnect (lazily) in future sessions.
+
 ### Memory
 - **Working memory** (`WorkingMemory`): per-agent conversation buffer. Past a
   token budget it summarizes the oldest whole turns into one note and keeps
@@ -129,6 +142,7 @@ an interactive prompt. REPL commands: `/new [title]`, `/sessions`,
 - ~~Symbol-level change buffer~~ ✓
 - ~~Search/grep + find-files tools~~ ✓
 - ~~Parallel sub-agent fan-out~~ ✓ (`spawn_agents`)
+- ~~Self-configurable skills + MCP servers~~ ✓
 - Richer scope queries (symbol-at-position, references).
 - Provider plugins beyond DeepSeek.
 

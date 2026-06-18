@@ -62,6 +62,10 @@ impl Swarm {
             prompt.push_str(&self.coordinator.memory.digest(20));
             prompt.push_str("\nUse `recall` to search for more, and `remember` to add new facts.");
         }
+        if !self.coordinator.skills.is_empty() {
+            prompt.push_str("\n\nAvailable skills (load with use_skill):\n");
+            prompt.push_str(&self.coordinator.skills.digest());
+        }
         Agent::new(
             "orchestrator",
             self.provider.clone(),

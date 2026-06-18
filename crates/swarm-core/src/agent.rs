@@ -233,6 +233,11 @@ git-like change workflow.\n\
 - remember / recall / forget: long-term memory that persists across sessions. \
 Save durable project facts (conventions, where things live, decisions) and \
 recall them later.\n\
+- list_skills / use_skill / create_skill: reusable instruction packs. Load one \
+with use_skill, or teach yourself a repeatable procedure with create_skill.\n\
+- mcp_add_server / mcp_list_servers / mcp_list_tools / mcp_call: connect external \
+Model Context Protocol servers to extend your own toolset at runtime, then call \
+their tools.\n\
 - spawn_agent / spawn_agents: delegate subtasks to worker agents in their own \
 context. spawn_agents runs MULTIPLE workers in parallel — prefer it to fan out \
 independent work. Workers share your change buffer, symbol locks and memory.\n\n\
