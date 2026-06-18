@@ -21,7 +21,12 @@ Currently targets the **DeepSeek** API (OpenAI-compatible).
 - **Event bus** — staged/committed/locked/validated events propagate to all
   agents and to the REPL live.
 - **Agent terminal** — `run_command` gives agents a sandboxed shell.
-- **Streaming** — responses stream token-by-token in the REPL.
+- **Streaming + live feedback** — responses stream token-by-token, and every
+  tool/command call is shown as it runs (`⚙ name … ✓ result`).
+- **Memory system** — two layers: *working memory* auto-compacts the
+  conversation when it grows too large (older turns → an LLM summary), and
+  *long-term memory* persists durable project facts to `.swarm/memory.json`
+  (`remember`/`recall`/`forget`), injected into each new session's prompt.
 - **In-CLI key setup** — first run prompts for your DeepSeek key and saves it.
 
 ## Architecture
@@ -70,7 +75,17 @@ write_file / edit_symbol ─▶ Change Buffer ─(commit_changes)─▶ disk ─
 The agent tools for this workflow: `write_file`, `edit_symbol`, `view_changes`,
 `commit_changes`, `discard_changes`, `list_locks`, `run_command`, `cargo_check`.
 `edit_symbol` locates a symbol via tree-sitter, locks it, and stages a
-replacement; `commit_changes` flushes the buffer, releases locks and validates.
+replacement; `commit_changes` flushes **your** staged files (commits are
+author-scoped), releases your locks and validates.
+
+### Memory
+- **Working memory** (`WorkingMemory`): per-agent conversation buffer. Past a
+  token budget it summarizes the oldest whole turns into one note and keeps
+  recent turns verbatim — long sessions don't blow the context window.
+- **Long-term memory** (`MemoryStore`): workspace-scoped, persisted to
+  `.swarm/memory.json`. Tools `remember` / `recall` / `forget`; a digest of
+  recent notes is injected into the lead agent's prompt at session start, so the
+  swarm carries knowledge across sessions.
 
 ## Usage
 
@@ -100,7 +115,9 @@ an interactive prompt. REPL commands: `/new [title]`, `/sessions`,
 - ~~Shell/exec tool~~ ✓ (`run_command`)
 - ~~Change buffer, symbol locks, compile validation, event bus~~ ✓
 - ~~In-CLI key configuration~~ ✓
-- Author-scoped commits (currently `commit_changes` flushes the whole buffer).
+- ~~Context compaction + tool/command feedback~~ ✓
+- ~~Author-scoped commits~~ ✓
+- ~~Memory system (working + long-term)~~ ✓
 - Search/grep tool and richer scope queries (symbol-at-position, references).
 - True parallel sub-agent fan-out with result aggregation.
 - Provider plugins beyond DeepSeek.

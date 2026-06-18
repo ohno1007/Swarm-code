@@ -20,7 +20,22 @@ enum Staged {
 
 struct Entry {
     staged: Staged,
-    author: String,
+    /// Every agent that contributed to this file's staged content. A file is
+    /// the commit unit, so committing/discarding by any contributor applies to
+    /// the whole entry.
+    contributors: Vec<String>,
+}
+
+impl Entry {
+    fn add_contributor(&mut self, author: &str) {
+        if !self.contributors.iter().any(|a| a == author) {
+            self.contributors.push(author.to_string());
+        }
+    }
+
+    fn has(&self, author: &str) -> bool {
+        self.contributors.iter().any(|a| a == author)
+    }
 }
 
 /// Shared staging area for the workspace.
@@ -34,7 +49,7 @@ pub struct ChangeBuffer {
 #[derive(Clone, Debug)]
 pub struct PendingChange {
     pub path: PathBuf,
-    pub author: String,
+    pub authors: Vec<String>,
     pub kind: &'static str,
 }
 
@@ -53,30 +68,24 @@ impl ChangeBuffer {
 
     /// Stage a write (create/overwrite).
     pub fn stage_write(&self, rel: impl AsRef<Path>, content: String, author: &str) {
-        let rel = rel.as_ref().to_path_buf();
-        self.entries.lock().unwrap().insert(
-            rel.clone(),
-            Entry {
-                staged: Staged::Write(content),
-                author: author.to_string(),
-            },
-        );
-        self.events.publish(Event::Staged {
-            path: rel,
-            author: author.to_string(),
-        });
+        self.stage(rel.as_ref().to_path_buf(), Staged::Write(content), author);
     }
 
     /// Stage a deletion.
     pub fn stage_delete(&self, rel: impl AsRef<Path>, author: &str) {
-        let rel = rel.as_ref().to_path_buf();
-        self.entries.lock().unwrap().insert(
-            rel.clone(),
-            Entry {
-                staged: Staged::Delete,
-                author: author.to_string(),
-            },
-        );
+        self.stage(rel.as_ref().to_path_buf(), Staged::Delete, author);
+    }
+
+    fn stage(&self, rel: PathBuf, staged: Staged, author: &str) {
+        {
+            let mut entries = self.entries.lock().unwrap();
+            let entry = entries.entry(rel.clone()).or_insert_with(|| Entry {
+                staged: staged.clone(),
+                contributors: Vec::new(),
+            });
+            entry.staged = staged;
+            entry.add_contributor(author);
+        }
         self.events.publish(Event::Staged {
             path: rel,
             author: author.to_string(),
@@ -107,7 +116,7 @@ impl ChangeBuffer {
             .iter()
             .map(|(path, e)| PendingChange {
                 path: path.clone(),
-                author: e.author.clone(),
+                authors: e.contributors.clone(),
                 kind: match e.staged {
                     Staged::Write(_) => "write",
                     Staged::Delete => "delete",
@@ -120,6 +129,11 @@ impl ChangeBuffer {
 
     pub fn is_empty(&self) -> bool {
         self.entries.lock().unwrap().is_empty()
+    }
+
+    /// Whether `author` contributed to any staged change.
+    pub fn has_pending(&self, author: &str) -> bool {
+        self.entries.lock().unwrap().values().any(|e| e.has(author))
     }
 
     /// Render a unified diff of all staged changes against disk.
@@ -158,12 +172,22 @@ impl ChangeBuffer {
         out
     }
 
-    /// Apply all staged changes to disk and clear the buffer. Returns the list
-    /// of affected paths.
+    /// Apply `author`'s staged changes to disk, leaving other authors' staged
+    /// work untouched. Returns the list of affected paths.
     pub fn commit(&self, author: &str) -> std::io::Result<Vec<PathBuf>> {
         let drained: Vec<(PathBuf, Staged)> = {
             let mut entries = self.entries.lock().unwrap();
-            entries.drain().map(|(p, e)| (p, e.staged)).collect()
+            let keys: Vec<PathBuf> = entries
+                .iter()
+                .filter(|(_, e)| e.has(author))
+                .map(|(p, _)| p.clone())
+                .collect();
+            keys.into_iter()
+                .map(|k| {
+                    let e = entries.remove(&k).unwrap();
+                    (k, e.staged)
+                })
+                .collect()
         };
         let mut applied = Vec::new();
         for (rel, staged) in drained {
@@ -189,9 +213,19 @@ impl ChangeBuffer {
         Ok(applied)
     }
 
-    /// Discard all staged changes.
+    /// Discard `author`'s staged changes (others' remain).
     pub fn discard(&self, author: &str) {
-        self.entries.lock().unwrap().clear();
+        {
+            let mut entries = self.entries.lock().unwrap();
+            let keys: Vec<PathBuf> = entries
+                .iter()
+                .filter(|(_, e)| e.has(author))
+                .map(|(p, _)| p.clone())
+                .collect();
+            for k in keys {
+                entries.remove(&k);
+            }
+        }
         self.events.publish(Event::Discarded {
             author: author.to_string(),
         });

@@ -4,6 +4,7 @@ pub mod analyze;
 pub mod coord;
 pub mod exec;
 pub mod fs;
+pub mod memory;
 pub mod spawn;
 
 use std::sync::Arc;
@@ -28,6 +29,10 @@ pub fn default_registry() -> ToolRegistry {
         // Terminal + validation.
         .with(Arc::new(exec::RunCommand))
         .with(Arc::new(exec::CargoCheckTool))
+        // Long-term memory.
+        .with(Arc::new(memory::Remember))
+        .with(Arc::new(memory::Recall))
+        .with(Arc::new(memory::Forget))
         // Multi-agent delegation.
         .with(Arc::new(spawn::SpawnAgent))
 }

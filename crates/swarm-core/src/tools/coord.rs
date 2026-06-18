@@ -125,7 +125,12 @@ impl Tool for ViewChanges {
         }
         let mut out = String::from("Pending changes:\n");
         for c in &pending {
-            out.push_str(&format!("  {} {} (by {})\n", c.kind, c.path.display(), c.author));
+            out.push_str(&format!(
+                "  {} {} (by {})\n",
+                c.kind,
+                c.path.display(),
+                c.authors.join(", ")
+            ));
         }
         out.push('\n');
         out.push_str(&ctx.coordinator.buffer.diff());
@@ -150,8 +155,8 @@ impl Tool for CommitChanges {
         json!({ "type": "object", "properties": {} })
     }
     async fn execute(&self, _args: Value, ctx: &ToolContext) -> anyhow::Result<String> {
-        if ctx.coordinator.buffer.is_empty() {
-            return Ok("nothing to commit".to_string());
+        if !ctx.coordinator.buffer.has_pending(&ctx.agent) {
+            return Ok("nothing to commit (you have no staged changes)".to_string());
         }
         let (paths, validation) = ctx.coordinator.commit(&ctx.agent).await?;
         let mut out = format!("committed {} file(s):\n", paths.len());

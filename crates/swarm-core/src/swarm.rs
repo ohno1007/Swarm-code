@@ -53,14 +53,21 @@ impl Swarm {
         &self.model
     }
 
-    /// Build the lead orchestrator agent.
+    /// Build the lead orchestrator agent, injecting a digest of long-term
+    /// memory so it starts each session already aware of project context.
     pub fn lead_agent(&self) -> Agent {
+        let mut prompt = ORCHESTRATOR_PROMPT.to_string();
+        if !self.coordinator.memory.is_empty() {
+            prompt.push_str("\n\nProject memory (durable notes from past sessions):\n");
+            prompt.push_str(&self.coordinator.memory.digest(20));
+            prompt.push_str("\nUse `recall` to search for more, and `remember` to add new facts.");
+        }
         Agent::new(
             "orchestrator",
             self.provider.clone(),
             self.model.clone(),
             self.tools.clone(),
-            ORCHESTRATOR_PROMPT,
+            prompt,
         )
     }
 

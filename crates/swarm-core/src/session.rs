@@ -11,7 +11,7 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::agent::Agent;
+use crate::agent::{Agent, AgentObserver};
 use crate::swarm::Swarm;
 use crate::tool::ToolContext;
 
@@ -39,14 +39,15 @@ impl Session {
         self.agent.run(&self.ctx).await
     }
 
-    /// Like [`Session::send`] but streams text deltas to `sink`.
-    pub async fn send_streaming(
+    /// Like [`Session::send`] but emits live [`AgentEvent`]s to `observer`
+    /// (streamed text + tool/command feedback + memory compaction).
+    pub async fn send_observed(
         &mut self,
         input: impl Into<String>,
-        sink: swarm_llm::DeltaSink,
+        observer: AgentObserver,
     ) -> anyhow::Result<String> {
         self.agent.push_user(input);
-        self.agent.run_with_sink(&self.ctx, Some(sink)).await
+        self.agent.run_observed(&self.ctx, Some(observer)).await
     }
 
     pub fn turns(&self) -> usize {
@@ -95,19 +96,19 @@ impl SessionManager {
         guard.send(input).await
     }
 
-    /// Streaming variant of [`SessionManager::send`].
-    pub async fn send_streaming(
+    /// Observed variant of [`SessionManager::send`] (live streaming + feedback).
+    pub async fn send_observed(
         &self,
         id: Uuid,
         input: impl Into<String>,
-        sink: swarm_llm::DeltaSink,
+        observer: AgentObserver,
     ) -> anyhow::Result<String> {
         let session = self
             .get(id)
             .await
             .ok_or_else(|| anyhow::anyhow!("no such session: {id}"))?;
         let mut guard = session.lock().await;
-        guard.send_streaming(input, sink).await
+        guard.send_observed(input, observer).await
     }
 
     /// List `(id, title, turns)` for all live sessions.

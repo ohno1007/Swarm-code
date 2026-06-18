@@ -11,6 +11,7 @@ use std::sync::Arc;
 use crate::change::ChangeBuffer;
 use crate::events::{Event, EventBus};
 use crate::lock::LockManager;
+use crate::memory::MemoryStore;
 use crate::validate::{self, ValidationResult};
 
 pub struct Coordinator {
@@ -18,6 +19,8 @@ pub struct Coordinator {
     pub events: EventBus,
     pub buffer: Arc<ChangeBuffer>,
     pub locks: Arc<LockManager>,
+    /// Durable, workspace-scoped long-term memory.
+    pub memory: Arc<MemoryStore>,
 }
 
 impl Coordinator {
@@ -25,11 +28,13 @@ impl Coordinator {
         let events = EventBus::new();
         let buffer = Arc::new(ChangeBuffer::new(workspace.clone(), events.clone()));
         let locks = Arc::new(LockManager::new(events.clone()));
+        let memory = Arc::new(MemoryStore::load(&workspace));
         Arc::new(Self {
             workspace,
             events,
             buffer,
             locks,
+            memory,
         })
     }
 
