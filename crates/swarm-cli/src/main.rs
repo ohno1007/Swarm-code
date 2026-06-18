@@ -1,0 +1,81 @@
+//! Swarm-code CLI entry point.
+
+mod repl;
+
+use std::path::PathBuf;
+
+use clap::{Parser, Subcommand};
+use swarm_analyzer::Analyzer;
+
+#[derive(Parser)]
+#[command(name = "swarm", version, about = "Swarm-code: a multi-agent AI coding CLI")]
+struct Cli {
+    /// Workspace root the agents operate within (default: current dir).
+    #[arg(short, long, global = true)]
+    workspace: Option<PathBuf>,
+
+    #[command(subcommand)]
+    command: Option<Command>,
+}
+
+#[derive(Subcommand)]
+enum Command {
+    /// Start an interactive multi-session chat (default).
+    Chat,
+    /// Run a single task with the lead agent and print the result.
+    Run {
+        /// The task description.
+        task: String,
+    },
+    /// Analyze a source file and print its symbol/scope outline.
+    Analyze {
+        /// File to analyze.
+        path: PathBuf,
+        /// Emit the full symbol tree as JSON instead of an outline.
+        #[arg(long)]
+        json: bool,
+    },
+}
+
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    let _ = dotenvy::dotenv();
+    tracing_subscriber::fmt()
+        .with_env_filter(
+            tracing_subscriber::EnvFilter::try_from_default_env()
+                .unwrap_or_else(|_| "swarm_core=info,swarm_cli=info".into()),
+        )
+        .with_target(false)
+        .init();
+
+    let cli = Cli::parse();
+    let workspace = cli
+        .workspace
+        .unwrap_or(std::env::current_dir()?)
+        .canonicalize()?;
+
+    match cli.command.unwrap_or(Command::Chat) {
+        Command::Analyze { path, json } => analyze(&path, json),
+        Command::Run { task } => run_once(workspace, task).await,
+        Command::Chat => repl::run(workspace).await,
+    }
+}
+
+fn analyze(path: &std::path::Path, json: bool) -> anyhow::Result<()> {
+    let analyzer = Analyzer::new();
+    let root = analyzer.analyze_path(path)?;
+    if json {
+        println!("{}", serde_json::to_string_pretty(&root)?);
+    } else {
+        print!("{}", swarm_analyzer::render_outline(&root));
+    }
+    Ok(())
+}
+
+async fn run_once(workspace: PathBuf, task: String) -> anyhow::Result<()> {
+    let manager = swarm_core::build_manager(workspace)?;
+    let id = manager.create("run").await;
+    let answer = manager.send(id, task).await?;
+    println!("{answer}");
+    Ok(())
+}
