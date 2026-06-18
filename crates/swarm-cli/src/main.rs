@@ -1,6 +1,7 @@
 //! Swarm-code CLI entry point.
 
 mod keystore;
+mod md;
 mod repl;
 mod tui;
 

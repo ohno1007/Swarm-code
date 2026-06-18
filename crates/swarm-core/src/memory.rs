@@ -57,6 +57,11 @@ impl WorkingMemory {
         self.messages.is_empty()
     }
 
+    /// Approximate `(used_tokens, max_tokens)` for UI gauges.
+    pub fn usage(&self) -> (usize, usize) {
+        (self.estimated_tokens(), self.max_tokens)
+    }
+
     /// Rough token estimate (~4 chars/token).
     fn estimated_tokens(&self) -> usize {
         let chars: usize = self

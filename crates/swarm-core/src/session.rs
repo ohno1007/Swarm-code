@@ -11,7 +11,8 @@ use std::sync::Arc;
 use tokio::sync::Mutex;
 use uuid::Uuid;
 
-use crate::agent::{Agent, AgentObserver};
+use crate::agent::Agent;
+use crate::observe::AgentObserver;
 use crate::swarm::Swarm;
 use crate::tool::ToolContext;
 
@@ -39,19 +40,39 @@ impl Session {
         self.agent.run(&self.ctx).await
     }
 
-    /// Like [`Session::send`] but emits live [`AgentEvent`]s to `observer`
-    /// (streamed text + tool/command feedback + memory compaction).
+    /// Like [`Session::send`] but streams live output to `observer`.
     pub async fn send_observed(
         &mut self,
         input: impl Into<String>,
         observer: AgentObserver,
     ) -> anyhow::Result<String> {
         self.agent.push_user(input);
-        self.agent.run_observed(&self.ctx, Some(observer)).await
+        let ctx = self.ctx.clone().with_observer(Some(observer));
+        self.agent.run(&ctx).await
     }
 
     pub fn turns(&self) -> usize {
         self.agent.history().len()
+    }
+
+    pub fn model(&self) -> &str {
+        self.agent.model()
+    }
+
+    pub fn set_model(&mut self, model: impl Into<String>) {
+        self.agent.set_model(model);
+    }
+
+    pub fn temperature(&self) -> f32 {
+        self.agent.temperature()
+    }
+
+    pub fn set_temperature(&mut self, t: f32) {
+        self.agent.set_temperature(t);
+    }
+
+    pub fn context_usage(&self) -> (usize, usize) {
+        self.agent.context_usage()
     }
 }
 
@@ -124,6 +145,33 @@ impl SessionManager {
 
     pub async fn close(&self, id: Uuid) -> bool {
         self.sessions.lock().await.remove(&id).is_some()
+    }
+
+    /// `(model, temperature, (used_tokens, max_tokens))` for a session.
+    pub async fn status(&self, id: Uuid) -> Option<(String, f32, (usize, usize))> {
+        let session = self.get(id).await?;
+        let s = session.lock().await;
+        Some((s.model().to_string(), s.temperature(), s.context_usage()))
+    }
+
+    pub async fn set_model(&self, id: Uuid, model: impl Into<String>) -> bool {
+        match self.get(id).await {
+            Some(s) => {
+                s.lock().await.set_model(model);
+                true
+            }
+            None => false,
+        }
+    }
+
+    pub async fn set_temperature(&self, id: Uuid, t: f32) -> bool {
+        match self.get(id).await {
+            Some(s) => {
+                s.lock().await.set_temperature(t);
+                true
+            }
+            None => false,
+        }
     }
 
     pub fn swarm(&self) -> &Arc<Swarm> {

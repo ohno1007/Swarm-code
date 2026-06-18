@@ -9,6 +9,7 @@ use tracing::info;
 
 use crate::agent::{worker_system_prompt, Agent, ORCHESTRATOR_PROMPT};
 use crate::coordinator::Coordinator;
+use crate::observe::AgentObserver;
 use crate::tool::{SubAgentSpawner, ToolContext, ToolRegistry};
 
 /// Holds everything agents need (provider, model, tools, coordinator) and acts
@@ -85,11 +86,17 @@ impl Swarm {
         )
     }
 
-    /// Run a worker agent to completion on `task`.
+    /// Run a worker agent to completion on `task`. `observer` streams its live
+    /// output to the UI (tagged with the worker name).
     ///
     /// Workers get `spawner = None` (depth 1 limit), keeping delegation a
     /// single level deep and avoiding runaway recursion.
-    pub async fn run_subagent(&self, role: &str, task: &str) -> anyhow::Result<String> {
+    pub async fn run_subagent(
+        &self,
+        role: &str,
+        task: &str,
+        observer: Option<AgentObserver>,
+    ) -> anyhow::Result<String> {
         info!(role, "spawning worker agent");
         let mut agent = Agent::new(
             format!("worker:{role}"),
@@ -105,24 +112,35 @@ impl Swarm {
             self.coordinator.clone(),
             None,
             1,
-        );
+        )
+        .with_observer(observer);
         agent.run(&ctx).await
     }
 }
 
 #[async_trait]
 impl SubAgentSpawner for Swarm {
-    async fn spawn(&self, role: &str, task: &str) -> anyhow::Result<String> {
-        self.run_subagent(role, task).await
+    async fn spawn(
+        &self,
+        role: &str,
+        task: &str,
+        observer: Option<AgentObserver>,
+    ) -> anyhow::Result<String> {
+        self.run_subagent(role, task, observer).await
     }
 
     /// Fan out: run all workers concurrently (their LLM calls and tool I/O
     /// overlap). They share the change buffer and locks, so symbol-level locks
-    /// keep concurrent edits safe.
-    async fn spawn_many(&self, tasks: Vec<(String, String)>) -> Vec<anyhow::Result<String>> {
+    /// keep concurrent edits safe. Each worker's output streams to the observer
+    /// tagged with its name.
+    async fn spawn_many(
+        &self,
+        tasks: Vec<(String, String)>,
+        observer: Option<AgentObserver>,
+    ) -> Vec<anyhow::Result<String>> {
         let futures = tasks
             .iter()
-            .map(|(role, task)| self.run_subagent(role, task));
+            .map(|(role, task)| self.run_subagent(role, task, observer.clone()));
         futures::future::join_all(futures).await
     }
 }

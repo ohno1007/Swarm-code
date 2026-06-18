@@ -48,7 +48,7 @@ impl Tool for SpawnAgent {
         let Some(spawner) = &ctx.spawner else {
             anyhow::bail!("sub-agents cannot spawn further agents (depth limit reached)");
         };
-        spawner.spawn(role, task).await
+        spawner.spawn(role, task, ctx.observer.clone()).await
     }
 }
 
@@ -112,7 +112,7 @@ impl Tool for SpawnAgents {
         };
 
         let roles: Vec<String> = tasks.iter().map(|(r, _)| r.clone()).collect();
-        let results = spawner.spawn_many(tasks).await;
+        let results = spawner.spawn_many(tasks, ctx.observer.clone()).await;
 
         let mut out = String::new();
         for (i, (role, result)) in roles.iter().zip(results).enumerate() {

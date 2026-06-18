@@ -49,9 +49,14 @@ Point at a specific project with `-w <path>` (default: current folder).
 
 ### The chat UI
 
-A header bar (model • session • status), a scrolling transcript that streams the
-assistant's reply with **inline tool/command feedback** (`⚙ tool … ✓ result`),
-and an input box at the bottom.
+A header bar (model • temperature • session • status), a scrolling transcript
+that renders the assistant's reply as **markdown** and streams it live with
+**inline tool/command feedback** (`⚙ tool args … ✓ result`), an input box at the
+bottom, and — on wide terminals — a side panel with a **context-memory ring**
+(how full the conversation's working memory is; green → yellow → red).
+
+Sub-agent output streams too: when the agent delegates (`spawn_agents`), each
+worker's text and tool calls appear live under a labeled, indented `│` section.
 
 | Key | Action |
 |-----|--------|
@@ -60,9 +65,18 @@ and an input box at the bottom.
 | Esc | clear the input line |
 | Ctrl+C | quit |
 
-Slash commands (type in the input box): `/new [title]`, `/sessions`,
-`/switch <n>`, `/help`, `/quit`. Sessions run concurrently, so you can start a
-task, `/new` another, and switch between them.
+Slash commands (type in the input box):
+
+| Command | What |
+|---------|------|
+| `/model [name\|#]` | switch model (no arg lists `deepseek-chat` / `deepseek-reasoner`) |
+| `/temp <0-2>` | thinking intensity (sampling temperature) |
+| `/new [title]` | new concurrent session |
+| `/sessions`, `/switch <n>` | list / switch sessions |
+| `/help`, `/quit` | help / exit |
+
+Sessions run concurrently, so you can start a task, `/new` another, and switch
+between them.
 
 ## 4. How the agent works (what you'll see)
 

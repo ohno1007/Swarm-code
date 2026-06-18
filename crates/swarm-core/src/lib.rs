@@ -16,6 +16,7 @@ pub mod events;
 pub mod lock;
 pub mod mcp;
 pub mod memory;
+pub mod observe;
 pub mod session;
 pub mod skills;
 pub mod swarm;
@@ -26,7 +27,8 @@ pub mod validate;
 use std::path::PathBuf;
 use std::sync::Arc;
 
-pub use agent::{Agent, AgentEvent, AgentObserver};
+pub use agent::Agent;
+pub use observe::{AgentEvent, AgentMsg, AgentObserver};
 pub use change::ChangeBuffer;
 pub use config::Config;
 pub use coordinator::Coordinator;

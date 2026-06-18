@@ -7,6 +7,7 @@ use async_trait::async_trait;
 use swarm_llm::ToolSpec;
 
 use crate::coordinator::Coordinator;
+use crate::observe::AgentObserver;
 
 /// Context handed to every tool invocation.
 #[derive(Clone)]
@@ -21,6 +22,8 @@ pub struct ToolContext {
     pub spawner: Option<Arc<dyn SubAgentSpawner>>,
     /// Current sub-agent nesting depth (0 = lead agent).
     pub depth: usize,
+    /// Live UI observer, propagated to sub-agents so their output streams too.
+    pub observer: Option<AgentObserver>,
 }
 
 impl ToolContext {
@@ -36,7 +39,13 @@ impl ToolContext {
             coordinator,
             spawner,
             depth,
+            observer: None,
         }
+    }
+
+    pub fn with_observer(mut self, observer: Option<AgentObserver>) -> Self {
+        self.observer = observer;
+        self
     }
 }
 
@@ -44,16 +53,25 @@ impl ToolContext {
 #[async_trait]
 pub trait SubAgentSpawner: Send + Sync {
     /// Run a worker agent with `role` to completion on `task`, returning its
-    /// final answer.
-    async fn spawn(&self, role: &str, task: &str) -> anyhow::Result<String>;
+    /// final answer. `observer` streams the worker's live output to the UI.
+    async fn spawn(
+        &self,
+        role: &str,
+        task: &str,
+        observer: Option<AgentObserver>,
+    ) -> anyhow::Result<String>;
 
     /// Run several workers concurrently and collect their results in order.
     /// The default runs them sequentially; implementors should override for
     /// real parallelism.
-    async fn spawn_many(&self, tasks: Vec<(String, String)>) -> Vec<anyhow::Result<String>> {
+    async fn spawn_many(
+        &self,
+        tasks: Vec<(String, String)>,
+        observer: Option<AgentObserver>,
+    ) -> Vec<anyhow::Result<String>> {
         let mut out = Vec::with_capacity(tasks.len());
         for (role, task) in tasks {
-            out.push(self.spawn(&role, &task).await);
+            out.push(self.spawn(&role, &task, observer.clone()).await);
         }
         out
     }

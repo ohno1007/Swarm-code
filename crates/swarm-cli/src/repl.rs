@@ -12,7 +12,7 @@
 
 use std::path::PathBuf;
 
-use swarm_core::{AgentEvent, SessionManager};
+use swarm_core::{AgentEvent, AgentMsg, SessionManager};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use uuid::Uuid;
 
@@ -56,26 +56,31 @@ pub async fn run(workspace: PathBuf) -> anyhow::Result<()> {
         }
 
         // Stream the response live, with tool/command feedback.
-        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentEvent>();
+        let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel::<AgentMsg>();
         let printer = tokio::spawn(async move {
             let mut out = tokio::io::stdout();
             let _ = out.write_all(b"\n").await;
-            while let Some(ev) = rx.recv().await {
-                match ev {
+            while let Some(msg) = rx.recv().await {
+                let tag = if msg.depth > 0 {
+                    format!("\x1b[34m[{}]\x1b[0m ", msg.agent)
+                } else {
+                    String::new()
+                };
+                match msg.event {
                     AgentEvent::Text(t) => {
                         let _ = out.write_all(t.as_bytes()).await;
                         let _ = out.flush().await;
                     }
                     AgentEvent::ToolStart { name, args } => {
                         let _ = out
-                            .write_all(format!("\n\x1b[36m⚙ {name}\x1b[0m \x1b[2m{args}\x1b[0m\n").as_bytes())
+                            .write_all(format!("\n{tag}\x1b[36m⚙ {name}\x1b[0m \x1b[2m{args}\x1b[0m\n").as_bytes())
                             .await;
                         let _ = out.flush().await;
                     }
                     AgentEvent::ToolEnd { name, ok, preview } => {
                         let mark = if ok { "\x1b[32m✓\x1b[0m" } else { "\x1b[31m✗\x1b[0m" };
                         let _ = out
-                            .write_all(format!("{mark} \x1b[2m{name}: {preview}\x1b[0m\n").as_bytes())
+                            .write_all(format!("{tag}{mark} \x1b[2m{name}: {preview}\x1b[0m\n").as_bytes())
                             .await;
                         let _ = out.flush().await;
                     }

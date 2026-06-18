@@ -3,27 +3,11 @@
 use std::sync::Arc;
 
 use swarm_llm::{ChatRequest, LlmProvider, Message};
-use tokio::sync::mpsc::UnboundedSender;
 use tracing::{debug, info, warn};
 
 use crate::memory::WorkingMemory;
+use crate::observe::{AgentEvent, AgentMsg};
 use crate::tool::{ToolContext, ToolRegistry};
-
-/// Live feedback emitted while an agent runs, for the REPL/UI to render.
-#[derive(Debug, Clone)]
-pub enum AgentEvent {
-    /// A chunk of assistant text (streamed).
-    Text(String),
-    /// A tool call is about to run.
-    ToolStart { name: String, args: String },
-    /// A tool call finished.
-    ToolEnd { name: String, ok: bool, preview: String },
-    /// Working memory was compacted (N messages summarized).
-    Compacted { summarized: usize },
-}
-
-/// Channel an agent emits [`AgentEvent`]s on.
-pub type AgentObserver = UnboundedSender<AgentEvent>;
 
 /// A single conversational agent that can call tools in a loop until it
 /// produces a final text answer.
@@ -71,18 +55,41 @@ impl Agent {
         self.memory.messages()
     }
 
-    /// Drive the agent until it returns a final answer or hits `max_steps`.
-    pub async fn run(&mut self, ctx: &ToolContext) -> anyhow::Result<String> {
-        self.run_observed(ctx, None).await
+    pub fn model(&self) -> &str {
+        &self.model
     }
 
-    /// Like [`Agent::run`], but emits [`AgentEvent`]s to `observer` for live
-    /// streaming and tool/command feedback (used by the interactive REPL).
-    pub async fn run_observed(
-        &mut self,
-        ctx: &ToolContext,
-        observer: Option<AgentObserver>,
-    ) -> anyhow::Result<String> {
+    pub fn set_model(&mut self, model: impl Into<String>) {
+        self.model = model.into();
+    }
+
+    pub fn temperature(&self) -> f32 {
+        self.temperature
+    }
+
+    pub fn set_temperature(&mut self, t: f32) {
+        self.temperature = t.clamp(0.0, 2.0);
+    }
+
+    /// Approximate `(used, max)` context tokens of working memory.
+    pub fn context_usage(&self) -> (usize, usize) {
+        self.memory.usage()
+    }
+
+    /// Drive the agent until it returns a final answer or hits `max_steps`.
+    /// Live output is streamed to `ctx.observer` if present, tagged with this
+    /// agent's name and depth (so sub-agents are distinguishable in the UI).
+    pub async fn run(&mut self, ctx: &ToolContext) -> anyhow::Result<String> {
+        let emit = |event: AgentEvent| {
+            if let Some(obs) = &ctx.observer {
+                let _ = obs.send(AgentMsg {
+                    agent: self.name.clone(),
+                    depth: ctx.depth,
+                    event,
+                });
+            }
+        };
+
         for step in 0..self.max_steps {
             // Compact working memory before the call if it's grown too large.
             let summarized = self
@@ -90,16 +97,14 @@ impl Agent {
                 .compact_if_needed(&*self.provider, &self.model)
                 .await;
             if summarized > 0 {
-                if let Some(obs) = &observer {
-                    let _ = obs.send(AgentEvent::Compacted { summarized });
-                }
+                emit(AgentEvent::Compacted { summarized });
             }
 
             let request = ChatRequest::new(self.model.clone(), self.memory.messages().to_vec())
                 .with_tools(self.tools.specs())
                 .with_temperature(self.temperature);
 
-            let reply = self.call_model(request, observer.as_ref()).await?;
+            let reply = self.call_model(request, ctx).await?;
             self.memory.push(reply.clone());
 
             let tool_calls = reply.tool_calls.unwrap_or_default();
@@ -114,12 +119,10 @@ impl Agent {
                 let args: serde_json::Value = serde_json::from_str(&call.function.arguments)
                     .unwrap_or(serde_json::Value::Null);
 
-                if let Some(obs) = &observer {
-                    let _ = obs.send(AgentEvent::ToolStart {
-                        name: call.function.name.clone(),
-                        args: truncate(&call.function.arguments, 160),
-                    });
-                }
+                emit(AgentEvent::ToolStart {
+                    name: call.function.name.clone(),
+                    args: truncate(&call.function.arguments, 400),
+                });
 
                 let outcome = self.tools.execute(&call.function.name, args, ctx).await;
                 let (ok, result) = match outcome {
@@ -130,13 +133,11 @@ impl Agent {
                     }
                 };
 
-                if let Some(obs) = &observer {
-                    let _ = obs.send(AgentEvent::ToolEnd {
-                        name: call.function.name.clone(),
-                        ok,
-                        preview: preview(&result),
-                    });
-                }
+                emit(AgentEvent::ToolEnd {
+                    name: call.function.name.clone(),
+                    ok,
+                    preview: preview(&result),
+                });
 
                 self.memory.push(Message::tool_result(
                     call.id,
@@ -153,21 +154,27 @@ impl Agent {
         )
     }
 
-    /// Call the model, streaming text to `observer` when present.
+    /// Call the model, streaming text to the observer when present.
     async fn call_model(
         &self,
         request: ChatRequest,
-        observer: Option<&AgentObserver>,
+        ctx: &ToolContext,
     ) -> anyhow::Result<Message> {
-        match observer {
+        match &ctx.observer {
             None => Ok(self.provider.chat(request).await?),
             Some(obs) => {
-                // Bridge the provider's text-delta sink to AgentEvent::Text.
+                // Bridge the provider's text-delta sink to tagged Text events.
                 let (dtx, mut drx) = tokio::sync::mpsc::unbounded_channel::<String>();
                 let obs = obs.clone();
+                let agent = self.name.clone();
+                let depth = ctx.depth;
                 let forward = tokio::spawn(async move {
                     while let Some(text) = drx.recv().await {
-                        let _ = obs.send(AgentEvent::Text(text));
+                        let _ = obs.send(AgentMsg {
+                            agent: agent.clone(),
+                            depth,
+                            event: AgentEvent::Text(text),
+                        });
                     }
                 });
                 let reply = self.provider.chat_stream(request, dtx).await;
