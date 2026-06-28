@@ -1,0 +1,55 @@
+name: Build Windows GUI
+
+# Builds the Tauri (Material 3) desktop app into a Windows installer on a
+# Windows runner — Tauri needs MSVC + WebView2, which can't be cross-compiled
+# from Linux. Download the result from the run's "Artifacts".
+
+on:
+  push:
+    branches: ["**"]
+    paths:
+      - "gui/**"
+      - "crates/**"
+      - ".github/workflows/gui-windows.yml"
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            gui/src-tauri/target
+          key: ${{ runner.os }}-gui-${{ hashFiles('gui/src-tauri/Cargo.toml') }}
+
+      - name: Install frontend deps
+        working-directory: gui
+        run: npm install
+
+      - name: Build Tauri app
+        working-directory: gui
+        run: npm run tauri build
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: swarm-code-windows
+          path: |
+            gui/src-tauri/target/release/bundle/msi/*.msi
+            gui/src-tauri/target/release/bundle/nsis/*.exe
+            gui/src-tauri/target/release/swarm-gui.exe
+          if-no-files-found: warn

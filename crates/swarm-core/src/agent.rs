@@ -173,7 +173,7 @@ impl Agent {
                         let _ = obs.send(AgentMsg {
                             agent: agent.clone(),
                             depth,
-                            event: AgentEvent::Text(text),
+                            event: AgentEvent::Text { text },
                         });
                     }
                 });

@@ -340,7 +340,7 @@ impl App {
     fn on_agent_msg(&mut self, m: AgentMsg) {
         let AgentMsg { agent, depth, event } = m;
         match event {
-            AgentEvent::Text(t) => {
+            AgentEvent::Text { text: t } => {
                 if let Some(&i) = self.live.get(&agent) {
                     self.blocks[i].text.push_str(&t);
                 } else {

@@ -4,13 +4,15 @@
 //! nesting depth) so the UI can stream output — including from concurrently
 //! running sub-agents — and label/group it per agent.
 
+use serde::Serialize;
 use tokio::sync::mpsc::UnboundedSender;
 
 /// A single piece of live agent activity.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AgentEvent {
     /// A chunk of assistant text (streamed).
-    Text(String),
+    Text { text: String },
     /// A tool call is about to run.
     ToolStart { name: String, args: String },
     /// A tool call finished.
@@ -20,7 +22,7 @@ pub enum AgentEvent {
 }
 
 /// An [`AgentEvent`] tagged with its source agent.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize)]
 pub struct AgentMsg {
     /// Agent name, e.g. `orchestrator` or `worker:reviewer`.
     pub agent: String,

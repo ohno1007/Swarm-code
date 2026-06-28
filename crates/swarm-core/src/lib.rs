@@ -13,6 +13,7 @@ pub mod change;
 pub mod config;
 pub mod coordinator;
 pub mod events;
+pub mod keyconfig;
 pub mod lock;
 pub mod mcp;
 pub mod memory;

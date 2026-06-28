@@ -67,7 +67,7 @@ pub async fn run(workspace: PathBuf) -> anyhow::Result<()> {
                     String::new()
                 };
                 match msg.event {
-                    AgentEvent::Text(t) => {
+                    AgentEvent::Text { text: t } => {
                         let _ = out.write_all(t.as_bytes()).await;
                         let _ = out.flush().await;
                     }
