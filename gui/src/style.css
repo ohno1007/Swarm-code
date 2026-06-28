@@ -84,7 +84,12 @@ button { font-family: inherit; cursor: pointer; }
 .msg.user { display: flex; justify-content: flex-end; }
 .msg.user .bubble { background: var(--user-bubble); border-radius: 16px; padding: 11px 15px; max-width: 80%; white-space: pre-wrap; }
 .msg.assistant .who { font-size: 12px; color: var(--faint); margin-bottom: 6px; }
-.msg.assistant .bubble { line-height: 1.65; font-size: 15px; }
+.msg.assistant .bubble { line-height: 1.7; font-size: 15px; }
+.msg.assistant .acts { display: flex; gap: 6px; margin-top: 10px; opacity: 0; transition: opacity .12s; }
+.msg.assistant:hover .acts { opacity: 1; }
+.act { display: inline-flex; align-items: center; gap: 5px; font-size: 12px; color: var(--muted); background: transparent; border: 1px solid var(--border); border-radius: 8px; padding: 4px 9px; }
+.act:hover { background: var(--surface-2); color: var(--text); }
+.act svg { width: 13px; height: 13px; }
 .msg.worker { border-left: 2px solid var(--accent); padding-left: 12px; margin-left: 6px; }
 .msg.worker .who { color: var(--accent); font-weight: 600; }
 

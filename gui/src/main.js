@@ -34,6 +34,7 @@ const I = {
   test: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg>`,
   code: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="m8 9-3 3 3 3M16 9l3 3-3 3"/></svg>`,
   play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M7 5v14l11-7z"/></svg>`,
+  copy: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>`,
 };
 
 function greet() {
@@ -113,6 +114,13 @@ app.innerHTML = `
 
 const $ = (id) => document.getElementById(id);
 const thread = $("thread");
+
+function setWs(path) {
+  const el = $("ws");
+  const base = path.split(/[\\/]/).filter(Boolean).pop() || path;
+  el.textContent = "📁 " + base;
+  el.title = path;
+}
 
 // ---- composer -------------------------------------------------------------
 
@@ -251,8 +259,17 @@ function userBubble(text) {
 function assistantBubble(agent, depth) {
   const w = document.createElement("div");
   w.className = "msg assistant" + (depth > 0 ? " worker" : "");
-  w.innerHTML = `${depth > 0 ? `<div class="who">${agent}</div>` : `<div class="who">Swarm-code</div>`}<div class="bubble"></div>`;
+  const who = depth > 0 ? `<div class="who">${agent}</div>` : "";
+  w.innerHTML = `${who}<div class="bubble"></div><div class="acts"><button class="act copy">${I.copy}复制</button></div>`;
   w._raw = "";
+  w.querySelector(".copy").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(w._raw);
+      const btn = w.querySelector(".copy");
+      btn.innerHTML = `${I.copy}已复制`;
+      setTimeout(() => (btn.innerHTML = `${I.copy}复制`), 1200);
+    } catch {}
+  });
   thread.appendChild(w);
   return w;
 }
@@ -416,7 +433,7 @@ async function newSession() {
 
 async function openSettings() {
   const st = await call("app_status");
-  $("ws").textContent = st.workspace;
+  setWs(st.workspace);
   $("workspace").value = st.workspace;
   $("key-hint").textContent = st.maskedKey ? `当前：${st.maskedKey}` : "尚未设置密钥 — 聊天前必须填写。";
   $("key").value = "";
@@ -426,7 +443,7 @@ async function saveSettings() {
   const key = $("key").value.trim();
   const ws = $("workspace").value.trim();
   try {
-    if (ws) $("ws").textContent = (await call("set_workspace", { path: ws })).workspace;
+    if (ws) setWs((await call("set_workspace", { path: ws })).workspace);
     if (key) await call("set_key", { key });
     $("backdrop").classList.remove("show");
     if (!state.sessionId) await newSession();
@@ -456,7 +473,7 @@ async function init() {
   renderChips();
   renderCtx(0, 24000);
   const st = await call("app_status");
-  $("ws").textContent = st.workspace;
+  setWs(st.workspace);
   if (!st.hasKey) {
     openSettings();
   } else {
