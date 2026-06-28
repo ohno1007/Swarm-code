@@ -13,6 +13,8 @@ use tokio::sync::mpsc::UnboundedSender;
 pub enum AgentEvent {
     /// A chunk of assistant text (streamed).
     Text { text: String },
+    /// A chunk of model reasoning / "thinking" (streamed).
+    Reasoning { text: String },
     /// A tool call is about to run.
     ToolStart { name: String, args: String },
     /// A tool call finished.

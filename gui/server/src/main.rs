@@ -79,6 +79,11 @@ struct TitleReq {
     #[serde(default)]
     title: String,
 }
+#[derive(Deserialize, Default)]
+struct NameReq {
+    #[serde(default)]
+    name: String,
+}
 #[derive(Deserialize)]
 struct IdReq {
     id: String,
@@ -108,6 +113,7 @@ async fn app_status(State(s): State<Arc<AppState>>) -> ApiResult {
         "connected": inner.manager.is_some(),
         "workspace": inner.workspace.display().to_string(),
         "maskedKey": std::env::var(keyconfig::KEY_VAR).ok().map(|k| keyconfig::mask(&k)),
+        "name": keyconfig::get("DISPLAY_NAME"),
     })))
 }
 
@@ -116,6 +122,11 @@ async fn set_key(State(s): State<Arc<AppState>>, Json(req): Json<KeyReq>) -> Api
     let workspace = s.inner.lock().await.workspace.clone();
     let mgr = build_manager(workspace).map_err(|e| Error::bad(e.to_string()))?;
     s.inner.lock().await.manager = Some(mgr);
+    Ok(Json(json!({ "ok": true })))
+}
+
+async fn set_name(Json(req): Json<NameReq>) -> ApiResult {
+    keyconfig::save("DISPLAY_NAME", req.name.trim()).map_err(|e| Error::bad(e.to_string()))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -243,6 +254,7 @@ async fn main() {
     let app = Router::new()
         .route("/api/app_status", post(app_status))
         .route("/api/set_key", post(set_key))
+        .route("/api/set_name", post(set_name))
         .route("/api/set_workspace", post(set_workspace))
         .route("/api/create_session", post(create_session))
         .route("/api/list_sessions", post(list_sessions))

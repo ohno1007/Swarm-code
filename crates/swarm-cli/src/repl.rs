@@ -71,6 +71,10 @@ pub async fn run(workspace: PathBuf) -> anyhow::Result<()> {
                         let _ = out.write_all(t.as_bytes()).await;
                         let _ = out.flush().await;
                     }
+                    AgentEvent::Reasoning { text: t } => {
+                        let _ = out.write_all(format!("\x1b[2;3m{t}\x1b[0m").as_bytes()).await;
+                        let _ = out.flush().await;
+                    }
                     AgentEvent::ToolStart { name, args } => {
                         let _ = out
                             .write_all(format!("\n{tag}\x1b[36m⚙ {name}\x1b[0m \x1b[2m{args}\x1b[0m\n").as_bytes())

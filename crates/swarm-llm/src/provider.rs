@@ -3,8 +3,16 @@ use tokio::sync::mpsc::UnboundedSender;
 
 use crate::types::{ChatRequest, Message};
 
-/// Sink for streamed text deltas.
-pub type DeltaSink = UnboundedSender<String>;
+/// A streamed increment: either visible answer text or model reasoning
+/// ("thinking", e.g. deepseek-reasoner's `reasoning_content`).
+#[derive(Debug, Clone)]
+pub enum StreamDelta {
+    Content(String),
+    Reasoning(String),
+}
+
+/// Sink for streamed deltas.
+pub type DeltaSink = UnboundedSender<StreamDelta>;
 
 #[derive(Debug, thiserror::Error)]
 pub enum LlmError {
@@ -36,7 +44,7 @@ pub trait LlmProvider: Send + Sync {
     async fn chat_stream(&self, request: ChatRequest, sink: DeltaSink) -> Result<Message> {
         let message = self.chat(request).await?;
         if let Some(content) = &message.content {
-            let _ = sink.send(content.clone());
+            let _ = sink.send(StreamDelta::Content(content.clone()));
         }
         Ok(message)
     }

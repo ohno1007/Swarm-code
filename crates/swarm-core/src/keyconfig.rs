@@ -36,6 +36,11 @@ fn read_config() -> BTreeMap<String, String> {
     map
 }
 
+/// Read a single config value from the file (not the environment).
+pub fn get(key: &str) -> Option<String> {
+    read_config().get(key).cloned().filter(|v| !v.is_empty())
+}
+
 /// Load config values into the environment without overriding existing vars.
 pub fn load_into_env() {
     for (k, v) in read_config() {

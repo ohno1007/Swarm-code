@@ -1,4 +1,6 @@
 import "./style.css";
+import "@fontsource-variable/inter";
+import "@fontsource-variable/newsreader";
 import { call, send as apiSend } from "./api.js";
 import { marked } from "marked";
 
@@ -20,15 +22,22 @@ const SUGGESTIONS = [
   { icon: "play", text: "运行测试并修复失败项" },
 ];
 
-// ---- icons ----------------------------------------------------------------
+// ---- icons (Lucide-style line icons) --------------------------------------
+const LW = `fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"`;
 const I = {
   spark: `<svg class="spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.2 1.4 5.1 3 6.6 1.6 1.5 3.6 2.1 6.9 2.4-3.3.3-5.3.9-6.9 2.4-1.6 1.5-2.7 3.4-3 6.6-.3-3.2-1.4-5.1-3-6.6C7.4 11.9 5.4 11.3 2 11c3.4-.3 5.4-.9 7-2.4 1.6-1.5 2.7-3.4 3-6.6Z"/></svg>`,
-  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
-  chats: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12Z"/></svg>`,
-  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 7 2.6h.1A1.6 1.6 0 0 0 9 1.1V1a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 15 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></svg>`,
-  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`,
-  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>`,
-  tool: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0-5.2 5l-6.1 6.1a1.5 1.5 0 0 0 2.1 2.1l6.1-6.1a4 4 0 0 0 5-5.2l-2.4 2.4-2.1-2.1 2.5-2.2Z"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" ${LW}><path d="M12 5v14M5 12h14"/></svg>`,
+  compose: `<svg viewBox="0 0 24 24" ${LW}><path d="M12 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.4 2.6a2 2 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>`,
+  chats: `<svg viewBox="0 0 24 24" ${LW}><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24" ${LW}><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" ${LW}><path d="M12 19V5M5 12l7-7 7 7"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" ${LW}><path d="m6 9 6 6 6-6"/></svg>`,
+  clock: `<svg viewBox="0 0 24 24" ${LW}><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>`,
+  check: `<svg viewBox="0 0 24 24" ${LW}><path d="M20 6 9 17l-5-5"/></svg>`,
+  retry: `<svg viewBox="0 0 24 24" ${LW}><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>`,
+  up: `<svg viewBox="0 0 24 24" ${LW}><path d="M7 10v12"/><path d="M15 5.88 14 10h5.83a2 2 0 0 1 1.92 2.56l-2.33 8A2 2 0 0 1 17.5 22H4a2 2 0 0 1-2-2v-8a2 2 0 0 1 2-2h2.76a2 2 0 0 0 1.79-1.11L12 2a3.13 3.13 0 0 1 3 3.88z"/></svg>`,
+  down: `<svg viewBox="0 0 24 24" ${LW}><path d="M17 14V2"/><path d="M9 18.12 10 14H4.17a2 2 0 0 1-1.92-2.56l2.33-8A2 2 0 0 1 6.5 2H20a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2h-2.76a2 2 0 0 0-1.79 1.11L12 22a3.13 3.13 0 0 1-3-3.88z"/></svg>`,
+  tool: `<svg viewBox="0 0 24 24" ${LW}><path d="M14.7 6.3a4 4 0 0 0-5.2 5l-6.1 6.1a1.5 1.5 0 0 0 2.1 2.1l6.1-6.1a4 4 0 0 0 5-5.2l-2.4 2.4-2.1-2.1 2.5-2.2Z"/></svg>`,
   doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`,
   bug: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M3 9h3M18 9h3M3 15h3M18 15h3M12 2v4"/></svg>`,
   test: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg>`,
@@ -53,7 +62,10 @@ const state = {
   temp: 0.2,
   usage: [0, 24000],
   live: {},
+  think: {},
   pendingTool: {},
+  lastUser: "",
+  name: "",
   inConversation: false,
 };
 
@@ -61,7 +73,7 @@ const app = document.getElementById("app");
 app.innerHTML = `
   <div class="rail">
     <div class="logo">${I.spark}</div>
-    <button class="icon" id="r-new" title="新建会话">${I.plus}</button>
+    <button class="icon" id="r-new" title="新建会话">${I.compose}</button>
     <button class="icon" id="r-chats" title="会话列表">${I.chats}</button>
     <div class="spacer"></div>
     <button class="icon" id="r-settings" title="设置">${I.gear}</button>
@@ -86,7 +98,7 @@ app.innerHTML = `
       </div>
     </div>
     <div class="drawer" id="drawer">
-      <div class="dh"><span>会话</span><button class="icon" id="d-new" title="新建">${I.plus}</button></div>
+      <div class="dh"><span>会话</span><button class="icon" id="d-new" title="新建">${I.compose}</button></div>
       <div class="list" id="sessions"></div>
     </div>
   </div>
@@ -94,6 +106,10 @@ app.innerHTML = `
   <div class="backdrop" id="backdrop">
     <div class="modal">
       <h2>设置</h2>
+      <div class="field">
+        <label>显示名（用于问候）</label>
+        <input id="name" placeholder="例如 小吴" />
+      </div>
       <div class="field">
         <label>DeepSeek API 密钥</label>
         <input id="key" type="password" placeholder="sk-..." />
@@ -256,11 +272,39 @@ function userBubble(text) {
   thread.appendChild(w);
   scrollDown(true);
 }
+function thinkBlock(depth) {
+  const w = document.createElement("div");
+  w.className = "think" + (depth > 0 ? " worker" : "");
+  w.innerHTML = `
+    <div class="th"><span class="dot"></span><span class="tt">思考中…</span><span class="ch">${I.chevron}</span></div>
+    <div class="tb"></div>`;
+  w._raw = "";
+  w._body = w.querySelector(".tb");
+  w.querySelector(".th").addEventListener("click", () => w.classList.toggle("collapsed"));
+  thread.appendChild(w);
+  return w;
+}
+function finalizeThink(agent) {
+  const tb = state.think[agent];
+  if (!tb || tb._done) return;
+  tb._done = true;
+  tb.querySelector(".th").innerHTML = `<span class="ic">${I.check}</span><span class="tt">已思考</span><span class="ch">${I.chevron}</span>`;
+  tb.querySelector(".th").addEventListener("click", () => tb.classList.toggle("collapsed"));
+  tb.classList.add("collapsed");
+  delete state.think[agent];
+}
+
 function assistantBubble(agent, depth) {
   const w = document.createElement("div");
   w.className = "msg assistant" + (depth > 0 ? " worker" : "");
   const who = depth > 0 ? `<div class="who">${agent}</div>` : "";
-  w.innerHTML = `${who}<div class="bubble"></div><div class="acts"><button class="act copy">${I.copy}复制</button></div>`;
+  w.innerHTML = `${who}<div class="bubble"></div>
+    <div class="acts">
+      <button class="act copy" title="复制">${I.copy}复制</button>
+      <button class="act retry icononly" title="重试">${I.retry}</button>
+      <button class="act up icononly" title="赞">${I.up}</button>
+      <button class="act down icononly" title="踩">${I.down}</button>
+    </div>`;
   w._raw = "";
   w.querySelector(".copy").addEventListener("click", async () => {
     try {
@@ -270,13 +314,27 @@ function assistantBubble(agent, depth) {
       setTimeout(() => (btn.innerHTML = `${I.copy}复制`), 1200);
     } catch {}
   });
+  w.querySelector(".retry").addEventListener("click", () => retryLast());
+  const up = w.querySelector(".up"), down = w.querySelector(".down");
+  up.addEventListener("click", () => { up.classList.toggle("on"); down.classList.remove("on"); });
+  down.addEventListener("click", () => { down.classList.toggle("on"); up.classList.remove("on"); });
   thread.appendChild(w);
   return w;
 }
 
 function handleMsg(msg) {
   const { agent, depth, event } = msg;
-  if (event.kind === "text") {
+  if (event.kind === "reasoning") {
+    let tb = state.think[agent];
+    if (!tb) {
+      tb = thinkBlock(depth);
+      state.think[agent] = tb;
+    }
+    tb._raw += event.text;
+    tb._body.textContent = tb._raw;
+    scrollDown();
+  } else if (event.kind === "text") {
+    finalizeThink(agent);
     let b = state.live[agent];
     if (!b) {
       b = assistantBubble(agent, depth);
@@ -286,6 +344,7 @@ function handleMsg(msg) {
     b.querySelector(".bubble").innerHTML = marked.parse(b._raw);
     scrollDown();
   } else if (event.kind === "tool_start") {
+    finalizeThink(agent);
     delete state.live[agent];
     const card = document.createElement("div");
     card.className = "tool" + (depth > 0 ? " worker" : "");
@@ -361,11 +420,13 @@ async function submit(raw) {
   const text = (raw || "").trim();
   if (!text || state.busy || !state.sessionId) return;
   composer._ta.value = "";
+  state.lastUser = text;
   enterConversation();
   composer._refresh();
   userBubble(text);
   state.busy = true;
   state.live = {};
+  state.think = {};
   try {
     await apiSend(state.sessionId, text, handleMsg);
   } catch (e) {
@@ -374,6 +435,11 @@ async function submit(raw) {
   state.busy = false;
   composer._refresh();
   await refreshStatus();
+}
+
+function retryLast() {
+  if (state.busy || !state.lastUser) return;
+  submit(state.lastUser);
 }
 
 // ---- sessions & status ----------------------------------------------------
@@ -431,10 +497,15 @@ async function newSession() {
 
 // ---- settings -------------------------------------------------------------
 
+function applyGreeting() {
+  $("hello").textContent = greet() + (state.name ? "，" + state.name : "");
+}
+
 async function openSettings() {
   const st = await call("app_status");
   setWs(st.workspace);
   $("workspace").value = st.workspace;
+  $("name").value = st.name || "";
   $("key-hint").textContent = st.maskedKey ? `当前：${st.maskedKey}` : "尚未设置密钥 — 聊天前必须填写。";
   $("key").value = "";
   $("backdrop").classList.add("show");
@@ -442,9 +513,13 @@ async function openSettings() {
 async function saveSettings() {
   const key = $("key").value.trim();
   const ws = $("workspace").value.trim();
+  const name = $("name").value.trim();
   try {
     if (ws) setWs((await call("set_workspace", { path: ws })).workspace);
     if (key) await call("set_key", { key });
+    await call("set_name", { name });
+    state.name = name;
+    applyGreeting();
     $("backdrop").classList.remove("show");
     if (!state.sessionId) await newSession();
     else await refreshStatus();
@@ -474,6 +549,8 @@ async function init() {
   renderCtx(0, 24000);
   const st = await call("app_status");
   setWs(st.workspace);
+  state.name = st.name || "";
+  applyGreeting();
   if (!st.hasKey) {
     openSettings();
   } else {

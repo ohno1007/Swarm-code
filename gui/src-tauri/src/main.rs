@@ -43,7 +43,13 @@ async fn app_status(state: State<'_, AppState>) -> Result<Value, String> {
         "connected": inner.manager.is_some(),
         "workspace": inner.workspace.display().to_string(),
         "maskedKey": std::env::var(keyconfig::KEY_VAR).ok().map(|k| keyconfig::mask(&k)),
+        "name": keyconfig::get("DISPLAY_NAME"),
     }))
+}
+
+#[tauri::command]
+async fn set_name(name: String) -> Result<(), String> {
+    keyconfig::save("DISPLAY_NAME", name.trim()).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -148,6 +154,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             app_status,
             set_key,
+            set_name,
             set_workspace,
             create_session,
             list_sessions,

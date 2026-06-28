@@ -8,7 +8,7 @@ use async_trait::async_trait;
 use futures::StreamExt;
 use serde::Deserialize;
 
-use crate::provider::{DeltaSink, LlmError, LlmProvider, Result};
+use crate::provider::{DeltaSink, LlmError, LlmProvider, Result, StreamDelta};
 use crate::types::{ChatRequest, ChatResponse, FunctionCall, Message, Role, ToolCall};
 
 const DEFAULT_BASE_URL: &str = "https://api.deepseek.com";
@@ -137,10 +137,15 @@ impl LlmProvider for DeepSeekProvider {
                     Err(_) => continue,
                 };
                 if let Some(choice) = parsed.choices.into_iter().next() {
+                    if let Some(rt) = choice.delta.reasoning_content {
+                        if !rt.is_empty() {
+                            let _ = sink.send(StreamDelta::Reasoning(rt));
+                        }
+                    }
                     if let Some(text) = choice.delta.content {
                         if !text.is_empty() {
                             content.push_str(&text);
-                            let _ = sink.send(text);
+                            let _ = sink.send(StreamDelta::Content(text));
                         }
                     }
                     for delta in choice.delta.tool_calls.unwrap_or_default() {
@@ -190,6 +195,9 @@ struct StreamChoice {
 struct Delta {
     #[serde(default)]
     content: Option<String>,
+    /// deepseek-reasoner's chain-of-thought, streamed separately from content.
+    #[serde(default)]
+    reasoning_content: Option<String>,
     #[serde(default)]
     tool_calls: Option<Vec<DeltaToolCall>>,
 }

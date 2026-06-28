@@ -163,17 +163,22 @@ impl Agent {
         match &ctx.observer {
             None => Ok(self.provider.chat(request).await?),
             Some(obs) => {
-                // Bridge the provider's text-delta sink to tagged Text events.
-                let (dtx, mut drx) = tokio::sync::mpsc::unbounded_channel::<String>();
+                // Bridge the provider's delta sink to tagged Text/Reasoning events.
+                let (dtx, mut drx) =
+                    tokio::sync::mpsc::unbounded_channel::<swarm_llm::StreamDelta>();
                 let obs = obs.clone();
                 let agent = self.name.clone();
                 let depth = ctx.depth;
                 let forward = tokio::spawn(async move {
-                    while let Some(text) = drx.recv().await {
+                    while let Some(delta) = drx.recv().await {
+                        let event = match delta {
+                            swarm_llm::StreamDelta::Content(text) => AgentEvent::Text { text },
+                            swarm_llm::StreamDelta::Reasoning(text) => AgentEvent::Reasoning { text },
+                        };
                         let _ = obs.send(AgentMsg {
                             agent: agent.clone(),
                             depth,
-                            event: AgentEvent::Text { text },
+                            event,
                         });
                     }
                 });

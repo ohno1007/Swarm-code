@@ -26,6 +26,7 @@ const MODELS: [&str; 2] = ["deepseek-chat", "deepseek-reasoner"];
 enum Kind {
     User,
     Assistant,
+    Reasoning,
     Info,
     ToolStart,
     ToolOk,
@@ -340,7 +341,22 @@ impl App {
     fn on_agent_msg(&mut self, m: AgentMsg) {
         let AgentMsg { agent, depth, event } = m;
         match event {
+            AgentEvent::Reasoning { text: t } => {
+                let key = format!("think:{agent}");
+                if let Some(&i) = self.live.get(&key) {
+                    self.blocks[i].text.push_str(&t);
+                } else {
+                    self.blocks.push(Blk {
+                        kind: Kind::Reasoning,
+                        agent: agent.clone(),
+                        depth,
+                        text: t,
+                    });
+                    self.live.insert(key, self.blocks.len() - 1);
+                }
+            }
             AgentEvent::Text { text: t } => {
+                self.live.remove(&format!("think:{agent}"));
                 if let Some(&i) = self.live.get(&agent) {
                     self.blocks[i].text.push_str(&t);
                 } else {
@@ -354,6 +370,7 @@ impl App {
                 }
             }
             AgentEvent::ToolStart { name, args } => {
+                self.live.remove(&format!("think:{agent}"));
                 self.live.remove(&agent);
                 self.blocks.push(Blk {
                     kind: Kind::ToolStart,
@@ -559,6 +576,16 @@ fn block_content(b: &Blk, width: usize) -> Vec<Line<'static>> {
             out
         }
         Kind::Assistant => md::render(&b.text, width, Style::default()),
+        Kind::Reasoning => {
+            let mut out = Vec::new();
+            md::wrap_segments(
+                &mut out,
+                &[(b.text.clone(), Style::default().fg(Color::DarkGray).add_modifier(Modifier::ITALIC))],
+                width.saturating_sub(2),
+                "🤔 ",
+            );
+            out
+        }
         Kind::Info => {
             let mut out = Vec::new();
             for raw in b.text.split('\n') {
