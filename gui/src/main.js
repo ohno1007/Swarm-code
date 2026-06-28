@@ -1,22 +1,49 @@
 import "./style.css";
-import "material-symbols/outlined.css";
-
-// Material 3 web components
-import "@material/web/button/filled-button.js";
-import "@material/web/button/filled-tonal-button.js";
-import "@material/web/button/text-button.js";
-import "@material/web/iconbutton/icon-button.js";
-import "@material/web/textfield/outlined-text-field.js";
-import "@material/web/slider/slider.js";
-import "@material/web/dialog/dialog.js";
-import "@material/web/chips/chip-set.js";
-import "@material/web/chips/filter-chip.js";
-import "@material/web/progress/circular-progress.js";
-
 import { call, send as apiSend } from "./api.js";
 import { marked } from "marked";
 
-const MODELS = ["deepseek-chat", "deepseek-reasoner"];
+const MODELS = [
+  { id: "deepseek-chat", label: "DeepSeek Chat" },
+  { id: "deepseek-reasoner", label: "DeepSeek Reasoner（推理）" },
+];
+const LEVELS = [
+  { label: "低", temp: 0.0 },
+  { label: "中", temp: 0.4 },
+  { label: "高", temp: 0.8 },
+];
+
+const SUGGESTIONS = [
+  { icon: "doc", text: "解读这个项目的整体结构" },
+  { icon: "bug", text: "找出代码里的潜在 Bug" },
+  { icon: "test", text: "为核心模块写单元测试" },
+  { icon: "code", text: "重构这段代码并解释" },
+  { icon: "play", text: "运行测试并修复失败项" },
+];
+
+// ---- icons ----------------------------------------------------------------
+const I = {
+  spark: `<svg class="spark" viewBox="0 0 24 24" fill="currentColor"><path d="M12 2c.3 3.2 1.4 5.1 3 6.6 1.6 1.5 3.6 2.1 6.9 2.4-3.3.3-5.3.9-6.9 2.4-1.6 1.5-2.7 3.4-3 6.6-.3-3.2-1.4-5.1-3-6.6C7.4 11.9 5.4 11.3 2 11c3.4-.3 5.4-.9 7-2.4 1.6-1.5 2.7-3.4 3-6.6Z"/></svg>`,
+  plus: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>`,
+  chats: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M21 12a8 8 0 0 1-11.5 7.2L4 20l1-4.5A8 8 0 1 1 21 12Z"/></svg>`,
+  gear: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.6 1.6 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.6 1.6 0 0 0-2.7 1.1V21a2 2 0 1 1-4 0v-.1A1.6 1.6 0 0 0 7 19.4a1.6 1.6 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.6 1.6 0 0 0-1.1-2.7H1a2 2 0 1 1 0-4h.1A1.6 1.6 0 0 0 2.6 7a1.6 1.6 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1A1.6 1.6 0 0 0 7 2.6h.1A1.6 1.6 0 0 0 9 1.1V1a2 2 0 1 1 4 0v.1A1.6 1.6 0 0 0 15 2.6a1.6 1.6 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.6 1.6 0 0 0-.3 1.8v.1a1.6 1.6 0 0 0 1.5 1H23a2 2 0 1 1 0 4h-.1a1.6 1.6 0 0 0-1.5 1Z"/></svg>`,
+  send: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5M5 12l7-7 7 7"/></svg>`,
+  chevron: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="m6 9 6 6 6-6"/></svg>`,
+  tool: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M14.7 6.3a4 4 0 0 0-5.2 5l-6.1 6.1a1.5 1.5 0 0 0 2.1 2.1l6.1-6.1a4 4 0 0 0 5-5.2l-2.4 2.4-2.1-2.1 2.5-2.2Z"/></svg>`,
+  doc: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z"/><path d="M14 3v5h5"/></svg>`,
+  bug: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="8" y="6" width="8" height="12" rx="4"/><path d="M3 9h3M18 9h3M3 15h3M18 15h3M12 2v4"/></svg>`,
+  test: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><path d="M9 3h6M10 3v6l-5 9a2 2 0 0 0 2 3h10a2 2 0 0 0 2-3l-5-9V3"/></svg>`,
+  code: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"><path d="m8 9-3 3 3 3M16 9l3 3-3 3"/></svg>`,
+  play: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round"><path d="M7 5v14l11-7z"/></svg>`,
+};
+
+function greet() {
+  const h = new Date().getHours();
+  if (h < 6) return "凌晨好";
+  if (h < 12) return "早上好";
+  if (h < 14) return "中午好";
+  if (h < 18) return "下午好";
+  return "晚上好";
+}
 
 const state = {
   sessionId: null,
@@ -24,148 +51,211 @@ const state = {
   model: "deepseek-chat",
   temp: 0.2,
   usage: [0, 24000],
-  live: {}, // agent -> bubble element
-  pendingTool: {}, // agent -> tool element
+  live: {},
+  pendingTool: {},
+  inConversation: false,
 };
 
 const app = document.getElementById("app");
 app.innerHTML = `
-  <div class="shell">
-    <div class="appbar">
-      <div class="logo">S</div>
-      <div class="title">Swarm-code</div>
-      <span class="ws" id="ws"></span>
+  <div class="rail">
+    <div class="logo">${I.spark}</div>
+    <button class="icon" id="r-new" title="新建会话">${I.plus}</button>
+    <button class="icon" id="r-chats" title="会话列表">${I.chats}</button>
+    <div class="spacer"></div>
+    <button class="icon" id="r-settings" title="设置">${I.gear}</button>
+  </div>
+  <div class="main">
+    <div class="topbar">
+      <span class="ws" id="ws" title="点击修改工作区"></span>
       <div class="spacer"></div>
-      <md-icon-button id="btn-new" title="New session"><span class="material-symbols-outlined">add</span></md-icon-button>
-      <md-icon-button id="btn-settings" title="Settings"><span class="material-symbols-outlined">settings</span></md-icon-button>
+      <span class="ctx-pill" id="ctx"><svg class="mini" viewBox="0 0 36 36"><circle cx="18" cy="18" r="15" fill="none" stroke="#e7e5db" stroke-width="5"/><circle id="ctx-ring" cx="18" cy="18" r="15" fill="none" stroke="#5a9c6b" stroke-width="5" stroke-linecap="round" transform="rotate(-90 18 18)"/></svg><span id="ctx-text">上下文 0%</span></span>
     </div>
-    <div class="body">
-      <div class="rail">
-        <div class="head">Sessions</div>
-        <div class="list" id="sessions"></div>
-      </div>
-      <div class="chat">
-        <div class="transcript" id="transcript"></div>
-        <div class="composer">
-          <md-outlined-text-field id="input" type="textarea" rows="1" placeholder="Message Swarm-code…  (Enter to send, Shift+Enter for newline)"></md-outlined-text-field>
-          <md-filled-button id="send"><span class="material-symbols-outlined" slot="icon">send</span>Send</md-filled-button>
+    <div class="content">
+      <div class="home" id="home">
+        <div class="inner">
+          <div class="greeting serif">${I.spark}<span id="hello">${greet()}</span></div>
+          <div id="home-composer"></div>
+          <div class="chips" id="chips"></div>
         </div>
       </div>
-      <div class="rightpanel">
-        <div>
-          <div class="panel-title">Context memory</div>
-          <div class="ring-wrap">
-            <svg class="ring" viewBox="0 0 120 120">
-              <circle class="track" cx="60" cy="60" r="52"></circle>
-              <circle class="value" id="ring-val" cx="60" cy="60" r="52"></circle>
-              <text class="ring-label" id="ring-label" x="60" y="60" text-anchor="middle" dominant-baseline="central">0%</text>
-            </svg>
-          </div>
-          <div class="ring-cap" id="ring-cap">0 / 24k tokens</div>
-        </div>
-        <div class="control">
-          <div class="panel-title">Model</div>
-          <md-chip-set id="models"></md-chip-set>
-        </div>
-        <div class="control">
-          <div class="label"><span>Thinking intensity</span><span id="temp-val">0.2</span></div>
-          <md-slider id="temp" min="0" max="2" step="0.1" value="0.2" labeled></md-slider>
-        </div>
+      <div class="conversation" id="conversation">
+        <div class="transcript" id="transcript"><div class="thread" id="thread"></div></div>
+        <div class="composer-wrap" id="conv-composer"></div>
       </div>
+    </div>
+    <div class="drawer" id="drawer">
+      <div class="dh"><span>会话</span><button class="icon" id="d-new" title="新建">${I.plus}</button></div>
+      <div class="list" id="sessions"></div>
     </div>
   </div>
 
-  <md-dialog id="settings">
-    <div slot="headline">Settings</div>
-    <form slot="content" id="settings-form" method="dialog">
+  <div class="backdrop" id="backdrop">
+    <div class="modal">
+      <h2>设置</h2>
       <div class="field">
-        <md-outlined-text-field id="key" label="DeepSeek API key" type="password" style="width:100%"></md-outlined-text-field>
+        <label>DeepSeek API 密钥</label>
+        <input id="key" type="password" placeholder="sk-..." />
         <div class="hint" id="key-hint"></div>
       </div>
       <div class="field">
-        <md-outlined-text-field id="workspace" label="Workspace folder" style="width:100%"></md-outlined-text-field>
-        <div class="hint">The project folder the agents read and edit.</div>
+        <label>工作区文件夹</label>
+        <input id="workspace" placeholder="例如 C:\\Users\\you\\project" />
+        <div class="hint">智能体读取与修改的项目文件夹。</div>
       </div>
-    </form>
-    <div slot="actions">
-      <md-text-button id="settings-cancel">Cancel</md-text-button>
-      <md-filled-button id="settings-save">Save</md-filled-button>
+      <div class="actions">
+        <button class="btn" id="s-cancel">取消</button>
+        <button class="btn primary" id="s-save">保存</button>
+      </div>
     </div>
-  </md-dialog>
+  </div>
 `;
 
 const $ = (id) => document.getElementById(id);
-const transcript = $("transcript");
+const thread = $("thread");
 
-// ---- helpers --------------------------------------------------------------
+// ---- composer -------------------------------------------------------------
 
-function fmtK(n) {
-  return n >= 1000 ? (n / 1000).toFixed(1) + "k" : "" + n;
+function buildComposer() {
+  const el = document.createElement("div");
+  el.className = "composer";
+  el.innerHTML = `
+    <textarea rows="1" placeholder="今天有什么可以帮你的？（Enter 发送，Shift+Enter 换行）"></textarea>
+    <div class="composer-bottom">
+      <button class="iconbtn add" title="附加">${I.plus}</button>
+      <div class="spacer"></div>
+      <button class="menu-btn model">${modelLabel()} ${I.chevron}</button>
+      <button class="menu-btn level">强度：${levelLabel()} ${I.chevron}</button>
+      <button class="send" disabled>${I.send}</button>
+    </div>`;
+  const ta = el.querySelector("textarea");
+  const sendBtn = el.querySelector(".send");
+  const grow = () => {
+    ta.style.height = "auto";
+    ta.style.height = Math.min(ta.scrollHeight, 220) + "px";
+    sendBtn.disabled = state.busy || !ta.value.trim();
+  };
+  ta.addEventListener("input", grow);
+  ta.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" && !e.shiftKey) {
+      e.preventDefault();
+      submit(ta.value);
+    }
+  });
+  sendBtn.addEventListener("click", () => submit(ta.value));
+  el.querySelector(".model").addEventListener("click", (e) => openModelMenu(e.currentTarget));
+  el.querySelector(".level").addEventListener("click", (e) => openLevelMenu(e.currentTarget));
+  el._ta = ta;
+  el._refresh = () => {
+    el.querySelector(".model").innerHTML = `${modelLabel()} ${I.chevron}`;
+    el.querySelector(".level").innerHTML = `强度：${levelLabel()} ${I.chevron}`;
+    grow();
+  };
+  return el;
 }
+
+let composer = buildComposer();
+$("home-composer").appendChild(composer);
+
+function modelLabel() {
+  return (MODELS.find((m) => m.id === state.model) || MODELS[0]).label;
+}
+function levelLabel() {
+  let best = LEVELS[0];
+  for (const l of LEVELS) if (Math.abs(l.temp - state.temp) < Math.abs(best.temp - state.temp)) best = l;
+  return best.label;
+}
+function focusComposer() {
+  composer._ta.focus();
+}
+
+// ---- popup menu -----------------------------------------------------------
+
+function openMenu(anchor, items, onPick) {
+  closeMenu();
+  const r = anchor.getBoundingClientRect();
+  const pop = document.createElement("div");
+  pop.className = "popup";
+  pop.innerHTML = items
+    .map((it, i) => `<div class="item ${it.sel ? "sel" : ""}" data-i="${i}"><span>${it.label}</span>${it.sub ? `<small>${it.sub}</small>` : ""}</div>`)
+    .join("");
+  document.body.appendChild(pop);
+  pop.style.left = Math.min(r.left, window.innerWidth - pop.offsetWidth - 12) + "px";
+  pop.style.top = r.top - pop.offsetHeight - 6 + "px";
+  pop.querySelectorAll(".item").forEach((node) =>
+    node.addEventListener("click", () => {
+      onPick(Number(node.dataset.i));
+      closeMenu();
+    })
+  );
+  window._menu = pop;
+}
+function closeMenu() {
+  if (window._menu) {
+    window._menu.remove();
+    window._menu = null;
+  }
+}
+document.addEventListener("click", (e) => {
+  if (window._menu && !window._menu.contains(e.target) && !e.target.closest(".menu-btn")) closeMenu();
+});
+
+function openModelMenu(anchor) {
+  openMenu(
+    anchor,
+    MODELS.map((m) => ({ label: m.label, sel: m.id === state.model })),
+    async (i) => {
+      state.model = MODELS[i].id;
+      composer._refresh();
+      if (state.sessionId) await call("set_model", { id: state.sessionId, model: state.model });
+    }
+  );
+}
+function openLevelMenu(anchor) {
+  openMenu(
+    anchor,
+    LEVELS.map((l) => ({ label: l.label, sub: "t=" + l.temp.toFixed(1), sel: l.label === levelLabel() })),
+    async (i) => {
+      state.temp = LEVELS[i].temp;
+      composer._refresh();
+      if (state.sessionId) await call("set_temp", { id: state.sessionId, temp: state.temp });
+    }
+  );
+}
+
+// ---- rendering ------------------------------------------------------------
 
 function atBottom() {
-  return transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight < 80;
+  const t = $("transcript");
+  return t.scrollHeight - t.scrollTop - t.clientHeight < 100;
 }
 function scrollDown(force) {
-  if (force || atBottom()) transcript.scrollTop = transcript.scrollHeight;
+  const t = $("transcript");
+  if (force || atBottom()) t.scrollTop = t.scrollHeight;
 }
-
 function addInfo(text) {
   const d = document.createElement("div");
   d.className = "info";
   d.textContent = text;
-  transcript.appendChild(d);
+  thread.appendChild(d);
   scrollDown(true);
 }
-
 function userBubble(text) {
-  const wrap = document.createElement("div");
-  wrap.className = "msg user";
-  wrap.innerHTML = `<div class="bubble"></div>`;
-  wrap.querySelector(".bubble").textContent = text;
-  transcript.appendChild(wrap);
+  const w = document.createElement("div");
+  w.className = "msg user";
+  w.innerHTML = `<div class="bubble"></div>`;
+  w.querySelector(".bubble").textContent = text;
+  thread.appendChild(w);
   scrollDown(true);
 }
-
 function assistantBubble(agent, depth) {
-  const wrap = document.createElement("div");
-  wrap.className = "msg assistant" + (depth > 0 ? " worker" : "");
-  const who = depth > 0 ? agent : "";
-  wrap.innerHTML = `${who ? `<div class="who">${who}</div>` : ""}<div class="bubble"></div>`;
-  wrap._raw = "";
-  transcript.appendChild(wrap);
-  return wrap;
+  const w = document.createElement("div");
+  w.className = "msg assistant" + (depth > 0 ? " worker" : "");
+  w.innerHTML = `${depth > 0 ? `<div class="who">${agent}</div>` : `<div class="who">Swarm-code</div>`}<div class="bubble"></div>`;
+  w._raw = "";
+  thread.appendChild(w);
+  return w;
 }
-
-function renderRing(used, max) {
-  const frac = max ? Math.min(used / max, 1) : 0;
-  const r = 52, circ = 2 * Math.PI * r;
-  const val = $("ring-val");
-  val.style.strokeDasharray = `${circ}`;
-  val.style.strokeDashoffset = `${circ * (1 - frac)}`;
-  const color = frac < 0.6 ? "var(--md-sys-color-success)" : frac < 0.85 ? "#e6c34a" : "var(--md-sys-color-error)";
-  val.style.stroke = color;
-  $("ring-label").textContent = Math.round(frac * 100) + "%";
-  $("ring-cap").textContent = `${fmtK(used)} / ${fmtK(max)} tokens`;
-}
-
-function renderModels() {
-  const set = $("models");
-  set.innerHTML = "";
-  for (const m of MODELS) {
-    const chip = document.createElement("md-filter-chip");
-    chip.label = m;
-    chip.selected = m === state.model;
-    chip.addEventListener("click", async () => {
-      state.model = m;
-      renderModels();
-      if (state.sessionId) await call("set_model", { id: state.sessionId, model: m });
-    });
-    set.appendChild(chip);
-  }
-}
-
-// ---- streaming ------------------------------------------------------------
 
 function handleMsg(msg) {
   const { agent, depth, event } = msg;
@@ -182,15 +272,10 @@ function handleMsg(msg) {
     delete state.live[agent];
     const card = document.createElement("div");
     card.className = "tool" + (depth > 0 ? " worker" : "");
-    card.innerHTML = `
-      <div class="row">
-        <span class="ic">build</span>
-        <span class="name"></span>
-        <span class="args"></span>
-      </div>`;
+    card.innerHTML = `<div class="row">${I.tool}<span class="name"></span><span class="args"></span></div>`;
     card.querySelector(".name").textContent = event.name;
     card.querySelector(".args").textContent = event.args || "";
-    transcript.appendChild(card);
+    thread.appendChild(card);
     state.pendingTool[agent] = card;
     scrollDown();
   } else if (event.kind === "tool_end") {
@@ -204,27 +289,73 @@ function handleMsg(msg) {
     }
     scrollDown();
   } else if (event.kind === "compacted") {
-    addInfo(`… compacted ${event.summarized} earlier messages`);
+    addInfo(`… 已压缩 ${event.summarized} 条较早的消息`);
   }
 }
 
-async function sendMessage() {
-  const field = $("input");
-  const text = field.value.trim();
+function renderCtx(used, max) {
+  const frac = max ? Math.min(used / max, 1) : 0;
+  const r = 15, circ = 2 * Math.PI * r;
+  const ring = $("ctx-ring");
+  ring.style.strokeDasharray = `${circ}`;
+  ring.style.strokeDashoffset = `${circ * (1 - frac)}`;
+  ring.style.stroke = frac < 0.6 ? "#5a9c6b" : frac < 0.85 ? "#d6a531" : "#c0573f";
+  $("ctx-text").textContent = `上下文 ${Math.round(frac * 100)}%`;
+}
+
+function renderChips() {
+  $("chips").innerHTML = "";
+  for (const s of SUGGESTIONS) {
+    const c = document.createElement("button");
+    c.className = "chip";
+    c.innerHTML = `${I[s.icon]}<span>${s.text}</span>`;
+    c.addEventListener("click", () => {
+      composer._ta.value = s.text;
+      composer._refresh();
+      focusComposer();
+    });
+    $("chips").appendChild(c);
+  }
+}
+
+// ---- conversation flow ----------------------------------------------------
+
+function enterConversation() {
+  if (state.inConversation) return;
+  state.inConversation = true;
+  $("home").classList.add("hide");
+  $("conversation").classList.add("show");
+  $("ctx").classList.add("show");
+  $("conv-composer").appendChild(composer); // move the same composer down
+  composer._refresh();
+}
+function enterHome() {
+  state.inConversation = false;
+  $("home").classList.remove("hide");
+  $("conversation").classList.remove("show");
+  $("ctx").classList.remove("show");
+  thread.innerHTML = "";
+  $("home-composer").appendChild(composer);
+  composer._refresh();
+  focusComposer();
+}
+
+async function submit(raw) {
+  const text = (raw || "").trim();
   if (!text || state.busy || !state.sessionId) return;
-  field.value = "";
+  composer._ta.value = "";
+  enterConversation();
+  composer._refresh();
   userBubble(text);
   state.busy = true;
   state.live = {};
-  $("send").disabled = true;
-
   try {
     await apiSend(state.sessionId, text, handleMsg);
   } catch (e) {
-    addInfo("error: " + e);
+    addInfo("出错：" + e);
   }
   state.busy = false;
-  $("send").disabled = false;
+  composer._refresh();
   await refreshStatus();
 }
 
@@ -242,7 +373,7 @@ async function refreshSessions() {
   for (const s of sessions) {
     const el = document.createElement("div");
     el.className = "session" + (s.id === state.sessionId ? " active" : "");
-    el.innerHTML = `<div>${s.title}</div><div class="sub">${s.turns} msgs · ${s.id.slice(0, 8)}</div>`;
+    el.innerHTML = `<div>${s.title}</div><div class="sub">${s.turns} 条消息 · ${s.id.slice(0, 8)}</div>`;
     el.addEventListener("click", () => selectSession(s.id));
     list.appendChild(el);
   }
@@ -254,97 +385,83 @@ async function refreshStatus() {
     const st = await call("session_status", { id: state.sessionId });
     state.model = st.model;
     state.temp = st.temp;
-    state.usage = [st.used, st.max];
-    $("temp").value = st.temp;
-    $("temp-val").textContent = Number(st.temp).toFixed(1);
-    renderModels();
-    renderRing(st.used, st.max);
+    renderCtx(st.used, st.max);
+    composer._refresh();
   } catch {}
   await refreshSessions();
 }
 
 function selectSession(id) {
   state.sessionId = id;
-  transcript.innerHTML = "";
-  addInfo("Switched session. New messages appear here.");
+  $("drawer").classList.remove("open");
+  enterConversation();
+  thread.innerHTML = "";
+  addInfo("已切换到该会话，新消息将显示在这里。");
   refreshStatus();
 }
 
 async function newSession() {
   try {
-    const id = await call("create_session", { title: "session" });
+    const id = await call("create_session", { title: "会话" });
     state.sessionId = id;
-    transcript.innerHTML = "";
-    addInfo("New session ready. Ask me to explore or edit your project.");
+    $("drawer").classList.remove("open");
+    enterHome();
     await refreshStatus();
   } catch (e) {
-    addInfo("error: " + e);
+    addInfo("出错：" + e);
   }
 }
 
 // ---- settings -------------------------------------------------------------
 
 async function openSettings() {
-  const status = await call("app_status");
-  $("ws").textContent = status.workspace;
-  $("workspace").value = status.workspace;
-  $("key-hint").textContent = status.maskedKey
-    ? `Current: ${status.maskedKey}`
-    : "No key set — required to chat.";
+  const st = await call("app_status");
+  $("ws").textContent = st.workspace;
+  $("workspace").value = st.workspace;
+  $("key-hint").textContent = st.maskedKey ? `当前：${st.maskedKey}` : "尚未设置密钥 — 聊天前必须填写。";
   $("key").value = "";
-  $("settings").show();
+  $("backdrop").classList.add("show");
 }
-
 async function saveSettings() {
   const key = $("key").value.trim();
   const ws = $("workspace").value.trim();
   try {
-    if (ws) {
-      const resolved = await call("set_workspace", { path: ws });
-      $("ws").textContent = resolved;
-    }
-    if (key) {
-      await call("set_key", { key });
-    }
-    $("settings").close();
+    if (ws) $("ws").textContent = (await call("set_workspace", { path: ws })).workspace;
+    if (key) await call("set_key", { key });
+    $("backdrop").classList.remove("show");
     if (!state.sessionId) await newSession();
     else await refreshStatus();
   } catch (e) {
-    $("key-hint").textContent = "error: " + e;
+    $("key-hint").textContent = "出错：" + e;
   }
 }
 
 // ---- wire up --------------------------------------------------------------
 
-$("send").addEventListener("click", sendMessage);
-$("input").addEventListener("keydown", (e) => {
-  if (e.key === "Enter" && !e.shiftKey) {
-    e.preventDefault();
-    sendMessage();
-  }
+$("r-new").addEventListener("click", newSession);
+$("d-new").addEventListener("click", newSession);
+$("r-chats").addEventListener("click", () => {
+  $("drawer").classList.toggle("open");
+  refreshSessions();
 });
-$("btn-new").addEventListener("click", newSession);
-$("btn-settings").addEventListener("click", openSettings);
-$("settings-cancel").addEventListener("click", () => $("settings").close());
-$("settings-save").addEventListener("click", saveSettings);
-$("temp").addEventListener("input", (e) => {
-  $("temp-val").textContent = Number(e.target.value).toFixed(1);
-});
-$("temp").addEventListener("change", async (e) => {
-  state.temp = Number(e.target.value);
-  if (state.sessionId) await call("set_temp", { id: state.sessionId, temp: state.temp });
+$("r-settings").addEventListener("click", openSettings);
+$("ws").addEventListener("click", openSettings);
+$("s-cancel").addEventListener("click", () => $("backdrop").classList.remove("show"));
+$("s-save").addEventListener("click", saveSettings);
+$("backdrop").addEventListener("click", (e) => {
+  if (e.target === $("backdrop")) $("backdrop").classList.remove("show");
 });
 
 async function init() {
-  renderModels();
-  renderRing(0, 24000);
-  const status = await call("app_status");
-  $("ws").textContent = status.workspace;
-  if (!status.hasKey) {
-    addInfo("Welcome to Swarm-code. Add your DeepSeek API key in Settings to begin.");
+  renderChips();
+  renderCtx(0, 24000);
+  const st = await call("app_status");
+  $("ws").textContent = st.workspace;
+  if (!st.hasKey) {
     openSettings();
   } else {
     await newSession();
+    focusComposer();
   }
 }
 
