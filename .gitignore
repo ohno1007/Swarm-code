@@ -7,5 +7,5 @@
 # GUI build artifacts
 gui/node_modules/
 gui/dist/
-gui/src-tauri/target/
+gui/**/target/
 gui/src-tauri/gen/

@@ -13,7 +13,7 @@ import "@material/web/chips/chip-set.js";
 import "@material/web/chips/filter-chip.js";
 import "@material/web/progress/circular-progress.js";
 
-import { invoke, Channel } from "@tauri-apps/api/core";
+import { call, send as apiSend } from "./api.js";
 import { marked } from "marked";
 
 const MODELS = ["deepseek-chat", "deepseek-reasoner"];
@@ -159,7 +159,7 @@ function renderModels() {
     chip.addEventListener("click", async () => {
       state.model = m;
       renderModels();
-      if (state.sessionId) await invoke("set_model", { id: state.sessionId, model: m });
+      if (state.sessionId) await call("set_model", { id: state.sessionId, model: m });
     });
     set.appendChild(chip);
   }
@@ -218,10 +218,8 @@ async function sendMessage() {
   state.live = {};
   $("send").disabled = true;
 
-  const channel = new Channel();
-  channel.onmessage = handleMsg;
   try {
-    await invoke("send", { id: state.sessionId, text, onEvent: channel });
+    await apiSend(state.sessionId, text, handleMsg);
   } catch (e) {
     addInfo("error: " + e);
   }
@@ -235,7 +233,7 @@ async function sendMessage() {
 async function refreshSessions() {
   let sessions = [];
   try {
-    sessions = await invoke("list_sessions");
+    sessions = await call("list_sessions");
   } catch {
     return;
   }
@@ -253,7 +251,7 @@ async function refreshSessions() {
 async function refreshStatus() {
   if (!state.sessionId) return;
   try {
-    const st = await invoke("session_status", { id: state.sessionId });
+    const st = await call("session_status", { id: state.sessionId });
     state.model = st.model;
     state.temp = st.temp;
     state.usage = [st.used, st.max];
@@ -274,7 +272,7 @@ function selectSession(id) {
 
 async function newSession() {
   try {
-    const id = await invoke("create_session", { title: "session" });
+    const id = await call("create_session", { title: "session" });
     state.sessionId = id;
     transcript.innerHTML = "";
     addInfo("New session ready. Ask me to explore or edit your project.");
@@ -287,7 +285,7 @@ async function newSession() {
 // ---- settings -------------------------------------------------------------
 
 async function openSettings() {
-  const status = await invoke("app_status");
+  const status = await call("app_status");
   $("ws").textContent = status.workspace;
   $("workspace").value = status.workspace;
   $("key-hint").textContent = status.maskedKey
@@ -302,11 +300,11 @@ async function saveSettings() {
   const ws = $("workspace").value.trim();
   try {
     if (ws) {
-      const resolved = await invoke("set_workspace", { path: ws });
+      const resolved = await call("set_workspace", { path: ws });
       $("ws").textContent = resolved;
     }
     if (key) {
-      await invoke("set_key", { key });
+      await call("set_key", { key });
     }
     $("settings").close();
     if (!state.sessionId) await newSession();
@@ -334,13 +332,13 @@ $("temp").addEventListener("input", (e) => {
 });
 $("temp").addEventListener("change", async (e) => {
   state.temp = Number(e.target.value);
-  if (state.sessionId) await invoke("set_temp", { id: state.sessionId, temp: state.temp });
+  if (state.sessionId) await call("set_temp", { id: state.sessionId, temp: state.temp });
 });
 
 async function init() {
   renderModels();
   renderRing(0, 24000);
-  const status = await invoke("app_status");
+  const status = await call("app_status");
   $("ws").textContent = status.workspace;
   if (!status.hasKey) {
     addInfo("Welcome to Swarm-code. Add your DeepSeek API key in Settings to begin.");
